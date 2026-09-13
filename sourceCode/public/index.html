@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Report2Excel</title>
+
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <header class="header">
+        <div class="topline">
+          <a
+            class="brand-link"
+            href="https://www.vasuhealthcare.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Visit Vasu Healthcare"
+          >
+            <img class="brand-logo" src="logo.png" alt="Vasu Healthcare" />
+          </a>
+        </div>
+
+        <h1>Turn reports into <em>workable data.</em></h1>
+
+        <p>
+          Upload a digital or handwritten report, review the extracted data, and
+          export a clean Excel sheet.
+        </p>
+      </header>
+
+      <div class="workflow-steps" aria-label="Conversion steps">
+        <div class="workflow-step active" data-step="upload">
+          <span>01</span> Upload
+        </div>
+        <div class="workflow-line"></div>
+        <div class="workflow-step" data-step="review">
+          <span>02</span> Review
+        </div>
+        <div class="workflow-line"></div>
+        <div class="workflow-step" data-step="export">
+          <span>03</span> Export
+        </div>
+      </div>
+
+      <!-- Upload Sections -->
+      <section class="upload-options">
+        <!-- Computer Generated Report -->
+        <div id="computerCard" class="upload-card computer-card">
+          <div class="card-topline">
+            <div class="card-icon computer-icon" aria-hidden="true">▤</div>
+          </div>
+
+          <h2>Computer-Generated Report</h2>
+
+          <p class="card-description">
+            For digitally generated reports in PDF or image format.
+          </p>
+
+          <div class="supported">
+            <span>PDF</span>
+            <span>JPG</span>
+            <span>JPEG</span>
+            <span>PNG</span>
+          </div>
+
+          <label
+            for="computerFile"
+            id="computerChooseBtn"
+            class="choose-btn file-drop"
+          >
+            <span class="choose-icon">＋</span>
+            <span>Choose report</span>
+            <small>or drop a file here</small>
+          </label>
+
+          <input type="file" id="computerFile" accept=".pdf,.jpg,.jpeg,.png" />
+
+          <!-- Selected file -->
+          <div class="selected-file">
+            <p id="computerFileName" class="file-name"></p>
+
+            <button
+              type="button"
+              id="computerRemoveBtn"
+              class="remove-btn hidden"
+            >
+              Remove
+            </button>
+          </div>
+
+          <button
+            type="button"
+            id="computerUploadBtn"
+            class="process-btn"
+            disabled
+          >
+            Process Report
+          </button>
+
+          <p id="computerStatus" class="status"></p>
+        </div>
+
+        <!-- Handwritten Report -->
+        <div id="handwrittenCard" class="upload-card handwritten-card">
+          <div class="card-topline">
+            <div class="card-icon handwritten-icon" aria-hidden="true">✎</div>
+          </div>
+
+          <h2>Handwritten Report</h2>
+
+          <p class="card-description">
+            For handwritten reports in PDF or image format.
+          </p>
+
+          <div class="supported">
+            <span>PDF</span>
+            <span>JPG</span>
+            <span>JPEG</span>
+            <span>PNG</span>
+          </div>
+
+          <label
+            for="handwrittenFile"
+            id="handwrittenChooseBtn"
+            class="choose-btn file-drop"
+          >
+            <span class="choose-icon">＋</span>
+            <span>Choose report</span>
+            <small>or drop a file here</small>
+          </label>
+
+          <input
+            type="file"
+            id="handwrittenFile"
+            accept=".pdf,.jpg,.jpeg,.png"
+          />
+
+          <!-- Selected file -->
+          <div class="selected-file">
+            <p id="handwrittenFileName" class="file-name"></p>
+
+            <button
+              type="button"
+              id="handwrittenRemoveBtn"
+              class="remove-btn hidden"
+            >
+              Remove
+            </button>
+          </div>
+
+          <button
+            type="button"
+            id="handwrittenUploadBtn"
+            class="process-btn"
+            disabled
+          >
+            Process Report
+          </button>
+
+          <p id="handwrittenStatus" class="status"></p>
+        </div>
+      </section>
+
+      <!-- Preview Section -->
+      <section id="previewSection" class="preview-section hidden">
+        <div class="preview-header">
+          <div>
+            <div class="preview-title-row">
+              <h2>Report Preview</h2>
+            </div>
+
+            <p>Verify and edit the extracted data before downloading.</p>
+          </div>
+
+          <button type="button" id="downloadBtn" class="download-btn">
+            Download Excel
+          </button>
+        </div>
+
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Item Description</th>
+                <th>Pack Size</th>
+
+                <th>Opening Qty</th>
+                <th>Opening Value</th>
+
+                <th>Receipt Qty</th>
+                <th>Receipt Value</th>
+
+                <th>Issue Qty</th>
+                <th>Issue Value</th>
+
+                <th>Closing Qty</th>
+                <th>Closing Value</th>
+
+                <th>Dump Qty</th>
+
+                <th>M. Exp (MM/YY)</th>
+              </tr>
+            </thead>
+
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>

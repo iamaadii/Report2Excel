@@ -1,0 +1,6 @@
+sourceCode/node_modules/
+node_modules/
+.env
+.env.*
+sourceCode/uploads/*
+!sourceCode/uploads/.gitkeep

@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <!-- Background Gradient: Dark charcoal fading to near-black -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#38383c" />
+      <stop offset="40%" stop-color="#262628" />
+      <stop offset="100%" stop-color="#121214" />
+    </linearGradient>
+    
+    <!-- Soft glow filter matching the diffused aesthetic -->
+    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="18" result="blur" />
+    </filter>
+  </defs>
+
+  <!-- App-icon style rounded square background -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+
+  <!-- Outer Glow Layer -->
+  <path d="M148 144 L256 376 L364 144"
+        fill="none"
+        stroke="#0d4a1f"
+        stroke-width="84"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        filter="url(#softGlow)"
+        opacity="0.85" />
+
+  <!-- Main Crisp Letter -->
+  <path d="M148 144 L256 376 L364 144"
+        fill="none"
+        stroke="#186b35"
+        stroke-width="72"
+        stroke-linecap="round"
+        stroke-linejoin="round" />
+</svg>
