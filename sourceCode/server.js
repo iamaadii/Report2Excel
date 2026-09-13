@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+const tempStorageDir = require("./services/tempStorage");
 
 const invoiceRoutes = require("./routes/invoiceRoutes");
 
@@ -41,7 +42,7 @@ app.use(
 app.use(
     "/uploads",
     express.static(
-        path.join(__dirname, "uploads")
+        tempStorageDir
     )
 );
 

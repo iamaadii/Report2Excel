@@ -1,5 +1,6 @@
 const ExcelJS = require("exceljs");
 const path = require("path");
+const tempStorageDir = require("./tempStorage");
 
 
 /*
@@ -133,9 +134,7 @@ async function createExcelFile(rows) {
 
     const filePath =
         path.join(
-            __dirname,
-            "..",
-            "uploads",
+            tempStorageDir,
             `invoice-${Date.now()}.xlsx`
         );
 
@@ -274,9 +273,7 @@ async function createHandwrittenExcelFile(
 
     const filePath =
         path.join(
-            __dirname,
-            "..",
-            "uploads",
+            tempStorageDir,
             `handwritten-invoice-${Date.now()}.xlsx`
         );
 

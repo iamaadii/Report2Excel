@@ -4,7 +4,7 @@
   "description": "Invoice image/PDF to Excel converter with computer-generated and handwritten invoice support",
   "main": "server.js",
   "engines": {
-    "node": "20.x"
+    "node": "22.x"
   },
   "scripts": {
     "start": "node server.js",
