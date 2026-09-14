@@ -1,448 +1,320 @@
-# Notes: How this project works now
+# Developer Notes: Complete Internal Guide to Report2Excel
 
-This app is a document-to-Excel workflow for reports and invoice-like sheets. A user uploads a PDF or image, the backend extracts table data, and the result is shown in a browser preview before export to Excel.
-
-The main flow is:
-
-1. User chooses either a computer-generated report or a handwritten report.
-2. The browser sends the file to the Express API.
-3. The server stores the uploaded file temporarily.
-4. The controller checks the file type and selected report mode.
-5. The app classifies whether the file looks printed or handwritten.
-6. A processing path runs:
-   - printed/computer report: local PDF text extraction or OCR
-   - handwritten report: Gemini AI extraction
-7. Extracted rows are sent back to the UI.
-8. The user can review and edit the data.
-9. The final rows are converted to an Excel file for download.
+> **Why this file exists:**  
+> Read this file whenever you come back to this project after months or years. It explains the **internal implementation**, the **exact role of every single file**, and **how the pieces fit together**, all written in plain, simple English.
 
 ---
 
-## 1. Full workflow
-
-### Step 1: Browser loads the upload UI
-
-The page in `public/index.html` shows two upload cards:
-
-- Computer-Generated Report
-- Handwritten Report
-
-The frontend supports drag-and-drop and file selection for PDF, JPG, JPEG, and PNG files.
-
-### Step 2: File is sent to the server
-
-The browser uses fetch calls to the backend routes in `routes/invoiceRoutes.js`.
-
-The main processing endpoint is:
-
-- `POST /api/invoices/process`
-
-The download endpoint is:
-
-- `POST /api/invoices/download`
-
-### Step 3: Upload middleware handles the file
-
-`middleware/uploadMiddleware.js` checks:
-
-- file presence
-- allowed file types
-- file size limit
-- temporary storage location
-
-Files are saved in the `uploads` folder before processing.
-
-### Step 4: Controller decides the processing route
-
-`controllers/invoiceController.js` is the main decision point. It does the following:
-
-- checks that a file was uploaded
-- reads the file extension
-- reads the selected `invoiceType`
-- runs local document classification
-- rejects file type mismatches when the file appears to belong to the other category
-- calls the correct extraction service
-
-### Step 5: Local classification happens before extraction
-
-The app runs `classifyDocumentLocally()` from `services/documentClassificationService.js`.
-
-This is important because it helps detect whether the uploaded document is:
-
-- computer-generated
-- handwritten
-
-The classification is done locally using:
-
-- PDF digital text inspection
-- embedded page image OCR
-- report keyword detection
-- table structure heuristics
-
-This avoids unnecessary Gemini calls for printed reports.
-
-### Step 6: Printed report extraction
-
-For computer-generated files, the app checks whether the PDF has a text layer. If it does, it extracts text directly. If not, it extracts page images and runs OCR on those images.
-
-Key files involved:
-
-- `services/pdfService.js` – PDF text extraction and page image processing
-- `services/ocrService.js` – OCR on enhanced images
-- `services/rowParser.js` – row and value extraction from OCR text
-- `services/imageService.js` – image cleanup before OCR
-
-### Step 7: Handwritten extraction
-
-For handwritten reports, the app calls:
-
-- `services/handwrittenInvoiceService.js`
-
-This sends the document to the Gemini API and asks for a JSON array of extracted rows.
-
-The prompt instructs the model to ignore noise, handle ditto marks, resolve quantity formulas, and return clean structured data.
-
-### Step 8: Preview and editing in the browser
-
-The backend returns the extracted rows as JSON.
-
-The frontend in `public/script.js` builds the preview table and lets the user make corrections before export.
-
-### Step 9: Download as Excel
-
-When the user clicks Download Excel:
-
-- the browser sends the edited rows to `/api/invoices/download`
-- the backend creates an Excel file using `excelService.js`
-- the browser downloads the generated `.xlsx`
-
----
-
-## 2. Important files
-
-### `server.js`
-
-This is the main Express server.
-
-It does the following:
-
-- loads environment variables
-- enables CORS
-- serves the frontend from `public`
-- serves uploaded files from `uploads`
-- mounts the invoice API routes
-- exposes `/api/health`
-- starts the app on port 5000
-
-### `routes/invoiceRoutes.js`
-
-This file maps routes to controller functions:
-
-- `POST /process`
-- `POST /download`
-
-### `controllers/invoiceController.js`
-
-This file handles the core request lifecycle.
-
-It is responsible for:
-
-- validating uploads
-- checking file extension
-- determining report type
-- calling local classification
-- selecting the correct extraction path
-- returning rows to the frontend
-- exporting the final Excel workbook
-
-### `services/documentClassificationService.js`
-
-This file decides whether a document looks handwritten or computer-generated.
-
-It uses local heuristics instead of relying on external classification endpoints.
-
-### `services/pdfService.js`
-
-This file handles digital PDF extraction and scanned PDF OCR.
-
-It supports single-page and multi-page PDFs.
-
-### `services/ocrService.js`
-
-This file runs the OCR pipeline for printed reports and scanned pages.
-
-### `services/rowParser.js`
-
-This file converts OCR text into structured rows.
-
-It cleans the extracted text and tries to map values into fields such as:
-
-- item description
-- pack size
-- opening quantity/value
-- receipt quantity/value
-- issue quantity/value
-- closing quantity/value
-- dump quantity
-- M. Exp
-
-### `services/excelService.js`
-
-This file creates the final workbook and converts the preview rows into Excel output.
-
-### `services/handwrittenInvoiceService.js`
-
-This file calls Gemini to read handwritten documents and return a clean structured JSON array.
-
----
-
-## 3. Why the app was changed
-
-The app has moved beyond a simple image-only OCR flow. It now includes:
-
-- PDF extraction
-- local classification
-- mismatch detection
-- multi-page support
-- handwritten AI extraction
-- browser-side review before Excel export
-
-This means the project is closer to a real document processing workflow than a basic OCR demo.
-
----
-
-## 4. Environment setup and required variables
-
-The main environment variable used by the app is:
-
-```env
-GEMINI_API_KEY=your_api_key_here
+## 1. The Big Picture
+
+This app converts **printed reports** and **handwritten notes** (images or PDFs) into clean **Excel sheets (`.xlsx`)**.
+
+```text
+Upload File (Image/PDF)
+         │
+         ▼
+Check: Is it Printed or Handwritten?
+         │
+    ┌────┴───────────────────────────┐
+    ▼                                ▼
+[Computer-Generated]           [Handwritten]
+Read with PDF text / OCR       Read with Gemini AI
+(100% offline)                 (With 100% offline local backup)
+    │                                │
+    ▼                                ▼
+12 Columns Table               4 Columns Table
+    │                                │
+    └────────────────┬───────────────┘
+                     ▼
+             Preview on Screen
+           (Edit cells if needed)
+                     │
+                     ▼
+            Download Excel File
 ```
 
-This is required for handwritten document extraction via Gemini.
+---
 
-The app also expects Node dependencies to be installed with:
+## 2. Architecture & Data Flow
 
+Here is how data travels inside the app from the moment you select a file to the moment an Excel file downloads:
+
+```text
+USER BROWSER (public/index.html & script.js)
+  │
+  │  1. User selects a file and clicks "Process Report"
+  │     (Frontend clears any previous report data to avoid collisions)
+  ▼
+EXPRESS BACKEND (server.js & routes/invoiceRoutes.js)
+  │
+  │  2. File goes through Multer (middleware/uploadMiddleware.js)
+  │     Saved temporarily in 'uploads/' folder
+  ▼
+CONTROLLER (controllers/invoiceController.js)
+  │
+  │  3. Controller decides which engine to run:
+  │
+  ├─── IF "computer":
+  │      ├─ Is it a PDF?
+  │      │    └─ services/pdfService.js checks for digital text.
+  │      │         ├─ Text found? -> services/rowParser.js splits text into 12 columns.
+  │      │         └─ Scanned PDF? -> Extracts page images -> services/ocrService.js runs OCR.
+  │      └─ Is it an Image?
+  │           └─ services/imageService.js enhances it -> services/ocrService.js reads it -> services/rowParser.js parses it.
+  │
+  └─── IF "handwritten":
+         └─ services/handwrittenInvoiceService.js
+              ├─ Has GEMINI_API_KEY in .env?
+              │    └─ YES: Calls Google Gemini 3.6 Flash AI with prompt and gets clean JSON.
+              │    └─ Quota reached / error? -> Automatically goes to offline fallback.
+              └─ NO API key / Offline?
+                   └─ services/localHandwrittenParser.js (100% Offline Local Engine)
+                        ├─ Checks rotation (0°, 90°, 180°, 270°) and turns photo upright.
+                        ├─ Runs multi-pass image contrast to make faint ink readable.
+                        ├─ Groups words into table rows by Y-coordinates.
+                        └─ Assigns words to Sr.No, Item Name, Pack Size, Quantity.
+  │
+  ▼
+BROWSER PREVIEW (public/script.js)
+  │  4. Rows return to browser as JSON.
+  │  5. Table renders cleanly on screen.
+  │  6. User can click any cell to fix typos.
+  │
+  │  7. User clicks "Download Excel"
+  ▼
+EXCEL BUILDER (services/excelService.js)
+  │  8. Uses ExcelJS to style green headers, set column widths, and save .xlsx.
+  ▼
+USER DOWNLOADS EXCEL FILE
+```
+
+---
+
+## 3. Role of Each File (Internal Implementation)
+
+### A. The Server & Routing Files
+
+#### 1. `sourceCode/server.js`
+* **What it does:** The main door to the backend. It starts the Node.js Express server on port 5000.
+* **Key details:**
+  * Loads variables from `.env` using `dotenv`.
+  * Enables CORS so the frontend can talk to the backend without permission errors.
+  * Serves frontend files from the `public/` folder (`index.html`, `style.css`, `script.js`).
+  * Mounts the invoice routes at `/api/invoices`.
+
+#### 2. `sourceCode/routes/invoiceRoutes.js`
+* **What it does:** Defines the two main API paths:
+  * `POST /api/invoices/process`: Receives uploaded files and extracts table rows.
+  * `POST /api/invoices/download`: Takes the table rows and creates the downloadable Excel file.
+
+#### 3. `sourceCode/middleware/uploadMiddleware.js`
+* **What it does:** Uses `multer` to handle file uploads.
+* **Key details:**
+  * Checks file types: only allows `.pdf`, `.jpg`, `.jpeg`, `.png`.
+  * Sets file size limit to 10MB.
+  * Saves files temporarily into the `uploads/` folder with unique timestamps (e.g. `invoice-1789372132853.jpeg`).
+
+#### 4. `sourceCode/controllers/invoiceController.js`
+* **What it does:** The brain of the backend. It receives requests from routes, orchestrates the services, and returns responses.
+* **Key functions inside:**
+  * `processInvoice(req, res)`:
+    * Checks if a file was actually uploaded.
+    * Checks `req.body.invoiceType` (`computer` vs `handwritten`).
+    * **Mismatch check:** If a user puts a computer PDF in the handwritten section, it catches it and tells the user to switch sections.
+    * Routes to `extractHandwrittenInvoice()` for handwritten, or `processComputerPdf()` / `performOCR()` for computer reports.
+    * Automatically deletes temporary files when done so your hard disk doesn't fill up.
+  * `downloadExcel(req, res)`:
+    * Receives the verified table rows from the frontend.
+    * Calls `createExcelFile()` for computer format (12 columns) or `createHandwrittenExcelFile()` for handwritten format (4 columns).
+    * Sends the `.xlsx` file stream to the browser to trigger the download.
+
+---
+
+### B. Handwritten Processing Services
+
+#### 5. `sourceCode/services/handwrittenInvoiceService.js`
+* **What it does:** Manages handwritten report extraction. It tries Google Gemini AI first, and if that is not available, it calls the offline local parser.
+* **Key functions & logic:**
+  * `extractHandwrittenInvoice(inputPath)`:
+    1. Reads `process.env.GEMINI_API_KEY`.
+    2. If no key, it logs: *"No valid GEMINI_API_KEY found. Performing local extraction..."* and calls `parseHandwrittenLocally()`.
+    3. If a key is present, it connects to Google Gemini using model **`gemini-3.6-flash`**.
+    4. Sends the image/PDF as a base64 buffer with prompt rules:
+       * Any product name is valid (shampoo, oil, tablets, etc.).
+       * Ignore dealer phone numbers, GST numbers, and signatures.
+       * Strip horizontal dashes (e.g. `Item ----- 100ml ----- 10 Pcs`).
+       * Evaluate math equations (e.g. `96 + 36` becomes `132`).
+       * Expand ditto marks (`u`, `"`) to repeat the item name from the row above.
+    5. **Try / Catch Fallback:** If Gemini returns an error (such as quota exceeded `429`, model issue `404`, or no internet), it catches the error and automatically runs `parseHandwrittenLocally(inputPath)` so the user still gets their data.
+
+#### 6. `sourceCode/services/localHandwrittenParser.js`
+* **What it does:** The **100% offline, zero-API fallback engine** for handwritten reports. It can extract data from images and PDFs without any internet connection.
+* **How it works internally:**
+  1. **Document Orientation Detection (`detectBestOrientation`):**
+     * Photos taken with mobile phones are often rotated sideways (90° or 270°).
+     * It tests rotations (0°, 90°, 270°) with quick sample OCR checks and picks the angle where words read normally.
+  2. **Multi-Pass Image Contrast (`processImageAdaptive`):**
+     * Handwritten ink is often faint, or paper has blue ruling lines or shadows.
+     * It runs 4 different contrast passes:
+       * *Pass A (Linear Contrast):* Darkens faint ink strokes.
+       * *Pass B (Thresholding):* Turns paper background pure white.
+       * *Pass C (Normalize):* Balances uneven lighting across the page.
+       * *Pass D (Dilation):* Thickens thin pen lines.
+     * It scores each pass and picks the one that produces the most valid table rows.
+  3. **Spatial Tabular Clustering (`parseSpatialTsv`):**
+     * Normal OCR scrambles handwritten text into a single messy paragraph.
+     * This service gets word coordinates (`left`, `top`, `width`, `height`) from Tesseract TSV data.
+     * Words with similar `top` coordinates are grouped into the same horizontal line (row).
+     * Words are then sorted by horizontal `left` position into 4 columns:
+       * Column 1 (`0% - 15%` of width): `Sr. No`
+       * Column 2 (`15% - 58%` of width): `Item Name`
+       * Column 3 (`58% - 82%` of width): `Pack Size`
+       * Column 4 (`82% - 100%` of width): `Quantity`
+  4. **Text Cleanup (`cleanDigit`, `cleanPackSize`, `resolveItemName`):**
+     * Fixes OCR confusion: turns `lo` into `10`, `I` or `l` into `1`, `O` into `0`.
+     * Fixes pack sizes: turns `2oec` into `200g`, `m1` or `mt` into `ml`.
+     * If an item name matches known catalogs, it corrects minor spelling mistakes.
+
+---
+
+### C. Computer-Generated Processing Services
+
+#### 7. `sourceCode/services/pdfService.js`
+* **What it does:** Handles everything related to PDF files (single-page or multi-page).
+* **Key functions:**
+  * `extractTextFromPdf(filePath)`: Reads the invisible digital text layer inside vector PDFs using `pdfjs-dist`.
+  * `extractImagesFromPdf(filePath)`: If the PDF is a scanned document (no text layer), it inspects the internal PDF objects and extracts the raw scanned image streams (supporting `DCTDecode` for JPEGs and `FlateDecode` for PNG/TIFF streams, in RGB and CMYK color spaces).
+  * `processComputerPdf(filePath)`: Tries digital text first. If empty, extracts page images and passes them to OCR.
+
+#### 8. `sourceCode/services/ocrService.js`
+* **What it does:** Wraps `tesseract.js` for reading text from images.
+* **Key details:**
+  * Initializes a reusable Tesseract worker pool to avoid reloading the language files on every single image.
+  * Uses local `eng.traineddata` so it never needs to download OCR models from the web.
+  * Returns both raw `text` and structured bounding-box `tsv` data.
+
+#### 9. `sourceCode/services/imageService.js`
+* **What it does:** Preprocesses images before OCR using the `sharp` library.
+* **Key details:**
+  * Resizes very large or very small images to standard width (around 1800px).
+  * Converts images to grayscale (black and white).
+  * Normalizes contrast and sharpens edges to make printed numbers sharp and clear.
+
+#### 10. `sourceCode/services/rowParser.js`
+* **What it does:** Takes raw printed text from OCR and parses it into the **12 columns** required for computer-generated reports.
+* **Columns parsed:**
+  1. `itemDescription` (Product name)
+  2. `packSize` (e.g. 100ML, 200ML, 10X10)
+  3. `openingQty`
+  4. `openingValue`
+  5. `receiptQty`
+  6. `receiptValue`
+  7. `issueQty`
+  8. `issueValue`
+  9. `closingQty`
+  10. `closingValue`
+  11. `dumpQty`
+  12. `mExp` (Expiry date in MM/YY)
+
+#### 11. `sourceCode/services/documentClassificationService.js`
+* **What it does:** Tells whether a document is a computer-printed report or a handwritten report without calling any external AI API.
+* **How:** Checks for common printed keywords like `OPENING VALUE`, `CLOSING VALUE`, `RECEIPT QTY`, `BATCH NO`, `GSTIN`. If 2 or more match, it is classified as a computer report.
+
+---
+
+### D. Excel Generation Service
+
+#### 12. `sourceCode/services/excelService.js`
+* **What it does:** Turns rows of JavaScript data into an actual `.xlsx` Excel spreadsheet using `exceljs`.
+* **Two formats created:**
+  1. `createExcelFile(rows)`:
+     * Creates a 12-column worksheet.
+     * Freezes row 1 (the header) so headers stay visible when scrolling down.
+     * Styles headers with dark teal background and bold white text.
+  2. `createHandwrittenExcelFile(rows)`:
+     * Creates a clean 4-column worksheet: `SR.NO`, `ITEM NAME`, `PACK SIZE`, `QUANTITY`.
+     * Centers numbers and serial numbers for clean reading.
+
+---
+
+### E. Frontend Files (`public/`)
+
+#### 13. `sourceCode/public/index.html`
+* **What it does:** The visual page structure.
+* **Contains:**
+  * **Header:** Logo and title.
+  * **Workflow indicator:** Steps `01 Upload` → `02 Review` → `03 Export`.
+  * **Two upload cards:** One for *Computer-Generated Report* and one for *Handwritten Report*.
+  * **Preview section:** Table container with `<tbody id="tableBody">` and the green **Download Excel** button.
+
+#### 14. `sourceCode/public/script.js`
+* **What it does:** Controls everything that happens in the browser.
+* **Key functions & features:**
+  * `enableDropZone()`: Adds drag-and-drop support so users can drop files directly onto the cards.
+  * `clearComputerSection()` & `clearHandwrittenSection()`: Clears the other card whenever you start working on one.
+  * `clearPreviewSection()`: Empties previous rows, reset table styles, and hides the preview before new data arrives.
+  * `renderComputerTable(rows)`: Builds the 12-column table with horizontal scrolling (`min-width: 1200px`).
+  * `renderHandwrittenTable(rows)`: Builds the 4-column table (`width: 100%; table-layout: fixed`).
+  * `contenteditable="true"`: Makes table cells directly editable by clicking on them.
+  * `downloadBtn` event listener: Sends the current (edited) table rows back to `/api/invoices/download` to get the `.xlsx` file.
+
+#### 15. `sourceCode/public/style.css`
+* **What it does:** Makes the website look clean and modern.
+* **Key styling rules:**
+  * `.computer-table`: Gives column 1 (`Item Description`) at least 320px width so long product names don't wrap awkwardly.
+  * `.handwritten-table`: Gives column 1 (`SR.NO`) 60-80px, column 2 (`ITEM NAME`) 250px, column 3 (`PACK SIZE`) 120px, and column 4 (`QUANTITY`) 100px.
+  * Scoped classes ensure that computer and handwritten styles **never collide or distort each other**.
+
+---
+
+## 4. How the "Preview Collision" Bug Was Solved
+
+### The Problem:
+If a user generated a handwritten report (4 columns) and then generated a computer report (12 columns) — or vice-versa — the second report looked squished, overlapping, and corrupted on screen.
+
+### Why it happened:
+1. Both tables shared the exact same `<table>` element.
+2. Handwritten table set `table-layout: fixed; width: 100%` inline on the table.
+3. When the 12-column computer report was loaded, that `table-layout: fixed` was still active, forcing 12 wide columns to squeeze into the screen width.
+4. Unscoped CSS `th:first-child { min-width: 350px }` stretched the `SR.NO` column of handwritten reports to 350px.
+
+### How we fixed it:
+1. **Clean Slate (`clearPreviewSection`):** Whenever a file is selected or processed, the table completely strips any previous inline styles (`invoiceTable.removeAttribute("style")`) and empties both `thead` and `tbody`.
+2. **Dedicated Table Classes:**
+   * Computer tables use `.computer-table` with `table-layout: auto; min-width: 1200px;` and horizontal scroll.
+   * Handwritten tables use `.handwritten-table` with `table-layout: fixed; width: 100%;`.
+3. **Bi-Directional Card Clearing:** Selecting a file in one card immediately resets the other card's input, filename, and status.
+
+---
+
+## 5. How to Run & Test (Quick Reference)
+
+### 1. Starting the server
+Open your terminal in `sourceCode` and run:
 ```bash
-npm install
+npm run dev
 ```
+Open browser at: `http://localhost:5000`
+
+### 2. Environment variables (`.env`)
+The `.env` file lives inside `sourceCode/.env`:
+```env
+GEMINI_API_KEY=your_key_here
+GEMINI_MODEL=gemini-3.6-flash
+```
+* If you have a key, handwritten files are processed in ~1-2 seconds using Gemini AI.
+* If you leave the key blank or commented out, handwritten files are automatically processed locally using the offline parser.
 
 ---
 
-## 5. Example mental model
-
-Think of the app as a small data-entry pipeline:
-
-- upload a report
-- identify its type
-- read the table content
-- clean the values
-- show the result for review
-- download Excel
-
-That is the full purpose of the project.
-
-This file handles handwritten reports.
-
-It uses Gemini AI from Google.
-
-It sends the image and a prompt like:
-
-- ignore noise
-- find product rows
-- correct ditto marks
-- evaluate quantities written as equations
-- return a clean JSON array
-
-### Simple meaning
-
-This file lets the app read handwritten invoices with AI instead of OCR.
-
-## services/excelService.js
-
-This file creates the Excel file.
-
-There are two formats:
-
-- createExcelFile(rows) for computer-generated invoice type
-- createHandwrittenExcelFile(rows) for handwritten invoice type
-
-It uses ExcelJS library.
-
-It creates worksheets and columns like:
-
-- Item Description
-- Pack Size
-- Opening Qty
-- Receipt Qty
-- Issue Qty
-- Closing Qty
-- etc.
-
-For handwritten reports it creates columns:
-
-- SR.NO
-- ITEM NAME
-- PACK SIZE
-- QUANTITY
-
-### Simple meaning
-
-This file turns rows of data into an actual Excel sheet.
-
----
-
-# 4. Frontend side: public/script.js
-
-This is the browser JavaScript file.
-
-It controls the whole website experience.
-
-## It does these things:
-
-- keeps track of selected invoice type
-- stores extracted rows in memory
-- shows upload cards
-- enables drag and drop
-- allows selecting file and remove file
-- sends file to backend API
-- receives extracted rows
-- creates preview table in browser
-- allows user to edit cells
-- downloads final Excel file
-
-## Important functions
-
-### setWorkflowStep(currentStep)
-
-This updates progress steps on the page.
-The workflow is:
-
-- upload
-- review
-- export
-
-### renderComputerTable(rows)
-
-This creates the table layout for computer-generated reports.
-
-### renderHandwrittenTable(rows)
-
-This creates a different table layout for handwritten reports.
-
-### downloadBtn.addEventListener("click", ...)
-
-This is triggered when the user clicks Download Excel.
-It sends the edited rows to the backend and downloads the file.
-
-### Simple meaning
-
-This file is the UI logic.
-It connects the buttons, file upload, data preview, and Excel download.
-
----
-
-# 5. How the request flow works in real life
-
-### Example: user uploads a printed report
-
-1. User selects an image.
-2. Frontend appends the file to FormData.
-3. Browser sends POST to /api/invoices/process.
-4. uploadMiddleware saves the file.
-5. controller checks the type.
-6. imageService enhances the image.
-7. ocrService reads text from the image.
-8. rowParser extracts columns.
-9. Backend sends JSON rows back.
-10. Browser shows table.
-11. User edits the table.
-12. Browser sends rows to /api/invoices/download.
-13. ExcelJS creates Excel file.
-14. Browser downloads final .xlsx file.
-
-### Example: user uploads a handwritten report
-
-1. User selects handwritten image.
-2. Frontend sends file to backend.
-3. controller sees handwritten type.
-4. handwrittenInvoiceService calls Gemini.
-5. AI reads the invoice and returns structured row data.
-6. Browser shows table.
-7. User edits values if needed.
-8. User downloads Excel.
-
----
-
-# 6. Simple summary of the project
-
-This project has 3 main parts:
-
-## Frontend
-
-In the public folder.
-It allows the user to upload files and view the data.
-
-## Backend
-
-In server.js and routes/controllers.
-It handles requests, file upload, and processing.
-
-## Processing services
-
-In services folder.
-These files do the actual work:
-
-- improve image
-- read text with OCR
-- parse rows
-- use AI for handwriting
-- create Excel files
-
----
-
-# 7. Very simple final explanation
-
-This project is basically:
-
-A web tool that takes pictures or scanned reports, reads the data, cleans it, and saves it into Excel.
-
-It works for:
-
-- printed reports
-- invoice-like documents
-- handwritten reports
-
-It is built using:
-
-- Node.js
-- Express
-- Tesseract OCR
-- Sharp
-- ExcelJS
-- Gemini AI
-
----
-
-# 8. Beginner tip
-
-When learning this project,
-read files in this order:
-
-1. server.js
-2. routes/invoiceRoutes.js
-3. controllers/invoiceController.js
-4. middleware/uploadMiddleware.js
-5. services/imageService.js
-6. services/ocrService.js
-7. services/rowParser.js
-8. services/excelService.js
-9. public/script.js
-
-This order helps you understand the full app flow from start to finish.
-
----
-
-# 9. One-line summary
-
-The app receives a report image, extracts the data, shows it to the user, and exports it as an Excel file.
+## 6. Reading Order for Developers
+
+If you want to read through the source code to refresh your memory, read in this exact order:
+1. `sourceCode/server.js` (Server setup)
+2. `sourceCode/routes/invoiceRoutes.js` (Route endpoints)
+3. `sourceCode/controllers/invoiceController.js` (Traffic director)
+4. `sourceCode/services/handwrittenInvoiceService.js` (AI extraction + fallback trigger)
+5. `sourceCode/services/localHandwrittenParser.js` (Offline handwritten engine)
+6. `sourceCode/services/pdfService.js` & `rowParser.js` (Computer report engine)
+7. `sourceCode/services/excelService.js` (Excel workbook creator)
+8. `sourceCode/public/script.js` (Frontend interaction & table rendering)
