@@ -27,26 +27,33 @@ async function extractTextFromPdf(filePath) {
             const page = await doc.getPage(i);
             const textContent = await page.getTextContent();
 
-            let pageText = "";
-            let lastY = null;
+            // Group text items into visual line buckets by vertical Y-coordinate
+            const lineBuckets = [];
 
             for (const item of textContent.items) {
-                const y = item.transform ? item.transform[5] : null;
+                if (!item.str || item.str.trim().length === 0) continue;
+                const x = item.transform ? item.transform[4] : 0;
+                const y = item.transform ? item.transform[5] : 0;
 
-                // When vertical position shifts by more than 3 units, start a new line
-                if (lastY !== null && y !== null && Math.abs(y - lastY) > 3) {
-                    pageText += "\n";
+                let bucket = lineBuckets.find(b => Math.abs(b.y - y) <= 6);
+                if (!bucket) {
+                    bucket = { y, items: [] };
+                    lineBuckets.push(bucket);
                 }
+                bucket.items.push({ x, str: item.str });
+            }
 
-                pageText += item.str;
+            // In PDF space, larger Y is near the top of the page; sort top-to-bottom
+            lineBuckets.sort((a, b) => b.y - a.y);
 
-                if (item.hasEOL) {
-                    pageText += "\n";
-                } else if (item.str && !item.str.endsWith(" ")) {
-                    pageText += " ";
+            let pageText = "";
+            for (const bucket of lineBuckets) {
+                // Sort items left-to-right
+                bucket.items.sort((a, b) => a.x - b.x);
+                const lineStr = bucket.items.map(it => it.str).join(" ").trim();
+                if (lineStr) {
+                    pageText += lineStr + "\n";
                 }
-
-                lastY = y;
             }
 
             pages.push({ num: i, text: pageText });
@@ -89,7 +96,10 @@ async function extractImagesFromPdf(filePath) {
                 const filter = dict.get(PDFName.of("Filter"));
                 const colorSpace = dict.get(PDFName.of("ColorSpace"));
 
-                if (!width || !height) continue;
+                // Filter out icons, small logos, barcodes (< 400x400)
+                if (!width || !height || width < 400 || height < 400) continue;
+                // Cap to prevent excessive OCR passes
+                if (imageBuffers.length >= 5) break;
 
                 let imgBuf = Buffer.from(obj.contents);
                 try {

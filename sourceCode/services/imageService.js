@@ -19,71 +19,21 @@ async function enhanceImage(
         );
 
 
-    await sharp(
-        inputPath
-    )
-
-        /*
-         * Increase resolution
-         */
-
+    await sharp(inputPath)
         .resize({
-
-            width: 3000,
-
-            withoutEnlargement: false,
-
+            width: 1800,
+            withoutEnlargement: true,
             fit: "inside"
-
         })
-
-
-        /*
-         * Convert to grayscale
-         */
-
         .grayscale()
-
-
-        /*
-         * Increase contrast
-         */
-
         .normalize()
-
-
-        /*
-         * Sharpen text
-         */
-
         .sharpen({
-
-            sigma: 1.5
-
+            sigma: 1.2
         })
-
-
-        /*
-         * Remove small noise
-         */
-
-        .median(3)
-
-
-        /*
-         * Save
-         */
-
         .png({
-
-            compressionLevel: 6
-
+            compressionLevel: 4
         })
-
-
-        .toFile(
-            outputPath
-        );
+        .toFile(outputPath);
 
 
     return outputPath;
