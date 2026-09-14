@@ -32,10 +32,12 @@ const {
 } = require("../services/excelService");
 
 const {
+    COMPUTER_INVOICE_KEYWORDS,
     classifyDocumentLocally
 } = require("../services/documentClassificationService");
 
 const {
+    extractTextFromPdf,
     processComputerPdf
 } = require("../services/pdfService");
 
@@ -120,40 +122,41 @@ async function processInvoice(
             extension === ".png" ||
             extension === ".pdf"
         ) {
-            // Classify document locally using Tesseract / PDF inspection & layout heuristics (zero external API calls)
-            const classification = await classifyDocumentLocally(filePath);
-            console.log("Local document classification result:", classification);
-
-            if (invoiceType === "computer" && classification && classification.documentType === "handwritten") {
-                await safeDeleteFile(filePath);
-                return res.status(400).json({
-                    success: false,
-                    mismatch: true,
-                    detectedType: "handwritten",
-                    expectedType: "computer",
-                    message: "This file appears to be a handwritten report. Please upload it in the 'Handwritten Report' section."
-                });
-            }
-
-            if (invoiceType === "handwritten" && classification && classification.documentType === "computer_generated") {
-                await safeDeleteFile(filePath);
-                return res.status(400).json({
-                    success: false,
-                    mismatch: true,
-                    detectedType: "computer_generated",
-                    expectedType: "handwritten",
-                    message: "This file appears to be a computer-generated report. Please upload it in the 'Computer-Generated Report' section."
-                });
-            }
-
             /*
              * ==================================
              * HANDWRITTEN (Images & PDFs)
              * ==================================
              */
             if (invoiceType === "handwritten") {
+                // If it's a PDF, do a fast (sub-50ms) digital text check to catch if a user accidentally
+                // uploaded a digital computer report in the handwritten section:
+                if (extension === ".pdf") {
+                    try {
+                        const { text } = await extractTextFromPdf(filePath);
+                        if (text && text.trim().length >= 40) {
+                            const upperText = text.toUpperCase();
+                            const matchedKeywords = COMPUTER_INVOICE_KEYWORDS.filter((kw) => upperText.includes(kw));
+                            const parsedRows = parseInvoiceText(text);
+
+                            if (parsedRows.length > 0 || matchedKeywords.length >= 2) {
+                                await safeDeleteFile(filePath);
+                                return res.status(400).json({
+                                    success: false,
+                                    mismatch: true,
+                                    detectedType: "computer_generated",
+                                    expectedType: "handwritten",
+                                    message: "This file appears to be a computer-generated report. Please upload it in the 'Computer-Generated Report' section."
+                                });
+                            }
+                        }
+                    } catch (pdfErr) {
+                        console.warn("Digital PDF check note for handwritten upload:", pdfErr.message);
+                    }
+                }
+
+                // Send directly to Gemini AI (zero slow Tesseract OCR passes)
                 console.log(
-                    "Using handwritten invoice extraction (supports single & multi-page documents)..."
+                    "Using handwritten invoice extraction via Gemini AI (direct fast path)..."
                 );
 
                 extractedRows =
@@ -177,7 +180,20 @@ async function processInvoice(
                             filePath
                         );
 
+                    // If computer PDF yielded zero rows and no text, check if it might be a handwritten document
+                    if (!extractedRows || extractedRows.length === 0) {
+                        await safeDeleteFile(filePath);
+                        return res.status(400).json({
+                            success: false,
+                            mismatch: true,
+                            detectedType: "handwritten",
+                            expectedType: "computer",
+                            message: "No computer-generated report table found. If this is a handwritten report, please upload it in the 'Handwritten Report' section."
+                        });
+                    }
+
                 } else {
+                    // 1. Enhance the image first for maximum contrast and readability
                     const enhancedPath =
                         await enhanceImage(
                             filePath
@@ -195,6 +211,11 @@ async function processInvoice(
                         metadata.width
                     );
 
+                    // 2. Single-pass OCR on the enhanced image (reuses warm worker & local traineddata)
+                    console.log(
+                        "Running single-pass Tesseract OCR on enhanced image..."
+                    );
+
                     const {
                         text
                     } =
@@ -205,17 +226,33 @@ async function processInvoice(
                     console.log(
                         "========== OCR TEXT =========="
                     );
-
                     console.log(text);
-
                     console.log(
                         "========== END OCR =========="
                     );
 
+                    // 3. Parse rows from OCR text
                     extractedRows =
                         parseInvoiceText(
                             text
                         );
+
+                    // 4. Verify if it really was a computer-generated report
+                    const upperText = (text || "").toUpperCase();
+                    const matchedKeywords = COMPUTER_INVOICE_KEYWORDS.filter((kw) => upperText.includes(kw));
+
+                    if (extractedRows.length === 0 && matchedKeywords.length === 0) {
+                        await Promise.all(
+                            tempFiles.map((f) => safeDeleteFile(f))
+                        );
+                        return res.status(400).json({
+                            success: false,
+                            mismatch: true,
+                            detectedType: "handwritten",
+                            expectedType: "computer",
+                            message: "This file appears to be a handwritten report. Please upload it in the 'Handwritten Report' section."
+                        });
+                    }
                 }
             }
 

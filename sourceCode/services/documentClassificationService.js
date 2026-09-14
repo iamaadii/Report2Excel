@@ -147,6 +147,7 @@ async function classifyDocumentLocally(filePath) {
 }
 
 module.exports = {
+    COMPUTER_INVOICE_KEYWORDS,
     classifyDocumentLocally,
     classifyDocumentType: classifyDocumentLocally
 };
