@@ -111,15 +111,18 @@ function parseInvoiceLine(originalLine) {
   */
 
   const mExpMatch =
-    line.match(/(\d{1,2}\/\d{2,4})\s*$/) || line.match(/(-)\s*$/);
+    line.match(/(\d{1,2}\/\d{2})\s*$/);
 
-  let mExp = "";
-  let remaining = line;
-
-  if (mExpMatch) {
-    mExp = mExpMatch[1] === "-" ? "" : mExpMatch[1];
-    remaining = line.substring(0, mExpMatch.index).trim();
+  if (!mExpMatch) {
+    return null;
   }
+
+  const mExp = mExpMatch[1];
+
+
+  // Remove M.EXP
+  let remaining =
+    line.substring(0, mExpMatch.index).trim();
 
 
   // ====================================================
