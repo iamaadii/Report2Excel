@@ -154,9 +154,11 @@ async function processInvoice(
                     }
                 }
 
-                // Send directly to Gemini AI (zero slow Tesseract OCR passes)
+                // Auto-orientation is handled seamlessly by sharp and the extraction pipeline
+
+                // Send to Gemini AI (with automatic fallback to local parser if quota reached)
                 console.log(
-                    "Using handwritten invoice extraction via Gemini AI (direct fast path)..."
+                    "Using handwritten invoice extraction (Gemini AI with local offline fallback)..."
                 );
 
                 extractedRows =

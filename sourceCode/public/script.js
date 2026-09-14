@@ -183,6 +183,48 @@ if (!tableHead) {
 }
 
 /* =========================
+   CLEAR & RESET HELPERS
+========================= */
+
+function clearComputerSection() {
+    computerFile.value = "";
+    computerFileName.textContent = "";
+    computerUploadBtn.disabled = true;
+    computerRemoveBtn.classList.add("hidden");
+    computerStatus.className = "status";
+    computerStatus.textContent = "";
+    computerCard?.classList.remove("card-highlight");
+}
+
+function clearHandwrittenSection() {
+    handwrittenFile.value = "";
+    handwrittenFileName.textContent = "";
+    handwrittenUploadBtn.disabled = true;
+    handwrittenRemoveBtn.classList.add("hidden");
+    handwrittenStatus.className = "status";
+    handwrittenStatus.textContent = "";
+    handwrittenCard?.classList.remove("card-highlight");
+}
+
+function clearPreviewSection() {
+    invoiceRows = [];
+    invoiceType = "";
+    if (previewSection) {
+        previewSection.classList.add("hidden");
+    }
+    if (tableHead) {
+        tableHead.innerHTML = "";
+    }
+    if (tableBody) {
+        tableBody.innerHTML = "";
+    }
+    if (invoiceTable) {
+        invoiceTable.removeAttribute("style");
+        invoiceTable.classList.remove("computer-table", "handwritten-table");
+    }
+}
+
+/* =========================
    COMPUTER FILE CHANGE
 ========================= */
 
@@ -204,6 +246,10 @@ computerFile.addEventListener("change", () => {
         return;
     }
 
+    // Clear previous handwritten generated data and preview
+    clearHandwrittenSection();
+    clearPreviewSection();
+
     computerFileName.textContent = file.name;
 
     computerUploadBtn.disabled = false;
@@ -212,7 +258,6 @@ computerFile.addEventListener("change", () => {
 
     computerStatus.className = "status";
     computerStatus.textContent = "";
-    handwrittenCard.classList.remove("card-highlight");
 
     setWorkflowStep("upload");
     updateUploadSections();
@@ -241,6 +286,10 @@ handwrittenFile.addEventListener("change", () => {
         return;
     }
 
+    // Clear previous computer generated data and preview
+    clearComputerSection();
+    clearPreviewSection();
+
     handwrittenFileName.textContent = file.name;
 
     handwrittenUploadBtn.disabled = false;
@@ -249,7 +298,6 @@ handwrittenFile.addEventListener("change", () => {
 
     handwrittenStatus.className = "status";
     handwrittenStatus.textContent = "";
-    computerCard.classList.remove("card-highlight");
 
     setWorkflowStep("upload");
     updateUploadSections();
@@ -343,6 +391,10 @@ computerUploadBtn.addEventListener("click", async () => {
     if (!file) {
         return;
     }
+
+    // Clear any previous handwritten report and preview so contents never collide
+    clearHandwrittenSection();
+    clearPreviewSection();
 
     computerUploadBtn.disabled = true;
     computerStatus.className = "status";
@@ -446,6 +498,10 @@ handwrittenUploadBtn.addEventListener("click", async () => {
     if (!file) {
         return;
     }
+
+    // Clear any previous computer report and preview so contents never collide
+    clearComputerSection();
+    clearPreviewSection();
 
     handwrittenUploadBtn.disabled = true;
     handwrittenStatus.className = "status";
@@ -551,22 +607,26 @@ function renderHandwrittenTable(rows) {
     }
 
     /*
+     * Clean slate table styling for handwritten table
+     */
+    invoiceTable.removeAttribute("style");
+    invoiceTable.classList.remove("computer-table");
+    invoiceTable.classList.add("handwritten-table");
+    invoiceTable.style.tableLayout = "fixed";
+    invoiceTable.style.width = "100%";
+    invoiceTable.style.minWidth = "600px";
+
+    /*
      * EXACT handwritten headers.
      */
     tableHead.innerHTML = `
     <tr>
-        <th style="width: 8%;">SR.NO</th>
-        <th style="width: 52%;">ITEM NAME</th>
-        <th style="width: 25%;">PACK SIZE</th>
-        <th style="width: 15%;">QUANTITY</th>
+        <th style="width: 10%;">SR.NO</th>
+        <th style="width: 50%;">ITEM NAME</th>
+        <th style="width: 22%;">PACK SIZE</th>
+        <th style="width: 18%;">QUANTITY</th>
     </tr>
 `;
-
-    invoiceTable.classList.add("handwritten-table");
-    invoiceTable.classList.remove("computer-table");
-    invoiceTable.style.tableLayout = "fixed";
-    invoiceTable.style.width = "100%";
-    invoiceTable.style.minWidth = "0";
 
     tableBody.innerHTML = "";
 
@@ -605,12 +665,14 @@ function renderComputerTable(rows) {
     }
 
     /*
-     * Computer-generated invoice
-     * has 12 columns.
+     * Clean slate table styling for computer-generated table (12 columns)
      */
-    invoiceTable.classList.add("computer-table");
+    invoiceTable.removeAttribute("style");
     invoiceTable.classList.remove("handwritten-table");
-    invoiceTable.style.minWidth = "0";
+    invoiceTable.classList.add("computer-table");
+    invoiceTable.style.tableLayout = "auto";
+    invoiceTable.style.width = "max-content";
+    invoiceTable.style.minWidth = "1200px";
 
     tableHead.innerHTML = `
         <tr>

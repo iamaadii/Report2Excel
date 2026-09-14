@@ -93,19 +93,32 @@ async function extractImagesFromPdf(filePath) {
 
                 let imgBuf = Buffer.from(obj.contents);
                 try {
-                    if (filter === PDFName.of("FlateDecode")) {
-                        imgBuf = zlib.inflateSync(imgBuf);
-                        const isRgb = colorSpace === PDFName.of("DeviceRGB") || (imgBuf.length === width * height * 3);
-                        const isCmyk = colorSpace === PDFName.of("DeviceCMYK") || (imgBuf.length === width * height * 4);
-                        const channels = isRgb ? 3 : (isCmyk ? 4 : 1);
-                        const pngBuf = await sharp(imgBuf, { raw: { width, height, channels } }).png().toBuffer();
-                        imageBuffers.push(pngBuf);
-                    } else if (filter === PDFName.of("DCTDecode")) {
+                    const filterStr = filter ? filter.toString() : "";
+                    if (filterStr.includes("FlateDecode")) {
+                        try {
+                            imgBuf = zlib.inflateSync(imgBuf);
+                        } catch (_) {
+                            imgBuf = zlib.inflateRawSync(imgBuf);
+                        }
+                    }
+
+                    const isJpeg = filterStr.includes("DCTDecode") ||
+                        (imgBuf.length > 3 && imgBuf[0] === 0xff && imgBuf[1] === 0xd8);
+
+                    if (isJpeg) {
                         const pngBuf = await sharp(imgBuf).png().toBuffer();
                         imageBuffers.push(pngBuf);
                     } else {
-                        const pngBuf = await sharp(imgBuf).png().toBuffer();
-                        imageBuffers.push(pngBuf);
+                        const isRgb = (colorSpace && colorSpace.toString().includes("DeviceRGB")) || (imgBuf.length === width * height * 3);
+                        const isCmyk = (colorSpace && colorSpace.toString().includes("DeviceCMYK")) || (imgBuf.length === width * height * 4);
+                        const channels = isRgb ? 3 : (isCmyk ? 4 : 1);
+                        try {
+                            const pngBuf = await sharp(imgBuf, { raw: { width, height, channels } }).png().toBuffer();
+                            imageBuffers.push(pngBuf);
+                        } catch (_) {
+                            const pngBuf = await sharp(imgBuf).png().toBuffer();
+                            imageBuffers.push(pngBuf);
+                        }
                     }
                 } catch (err) {
                     console.warn("Failed to decode an image stream:", err.message);
