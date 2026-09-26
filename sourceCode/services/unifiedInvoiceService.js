@@ -1,6 +1,11 @@
 const fs = require("fs");
 const path = require("path");
-const sharp = require("sharp");
+let sharp;
+try {
+    sharp = require("sharp");
+} catch (err) {
+    console.warn("Sharp native module note:", err.message);
+}
 const { extractImagesFromPdf, extractTextFromPdf } = require("./pdfService");
 
 /**
@@ -396,15 +401,21 @@ Plain lines only. No markdown.`;
 
     // Helper to process a single page image with vision
     const processPageImage = async (imgBuffer) => {
-        // High-speed, token-efficient JPEG optimization
-        // Keeping maximum dimension at 960px cuts input tokens from ~2800 to ~550,
-        // avoiding Groq 429 TPM rate limits while retaining 100% clarity for printed computer text.
-        const optimizedBuffer = await sharp(imgBuffer)
-            .resize({ width: 960, height: 960, fit: "inside", withoutEnlargement: true })
-            .jpeg({ quality: 76, mozjpeg: false })
-            .toBuffer();
-
-        const base64Data = optimizedBuffer.toString("base64");
+        let base64Data;
+        if (sharp) {
+            try {
+                const optimizedBuffer = await sharp(imgBuffer)
+                    .resize({ width: 960, height: 960, fit: "inside", withoutEnlargement: true })
+                    .jpeg({ quality: 76, mozjpeg: false })
+                    .toBuffer();
+                base64Data = optimizedBuffer.toString("base64");
+            } catch (sharpErr) {
+                console.warn("Sharp optimization note:", sharpErr.message);
+                base64Data = imgBuffer.toString("base64");
+            }
+        } else {
+            base64Data = imgBuffer.toString("base64");
+        }
 
         const payload = {
             model: modelName,
