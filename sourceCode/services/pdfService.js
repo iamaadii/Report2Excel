@@ -1,8 +1,27 @@
+// Polyfill missing browser canvas globals for pdf-parse v2 in serverless environments
+if (typeof global.DOMMatrix === "undefined") global.DOMMatrix = class DOMMatrix {};
+if (typeof global.ImageData === "undefined") global.ImageData = class ImageData {};
+if (typeof global.Path2D === "undefined") global.Path2D = class Path2D {};
+
 const fs = require("fs");
 const zlib = require("zlib");
-const sharp = require("sharp");
+
+let sharp;
+try {
+    sharp = require("sharp");
+} catch (err) {
+    console.warn("Sharp native module note:", err.message);
+}
+
 const { PDFDocument, PDFName, PDFRawStream } = require("pdf-lib");
-const { PDFParse } = require("pdf-parse");
+
+let PDFParse;
+try {
+    const pkg = require("pdf-parse");
+    PDFParse = pkg.PDFParse || pkg;
+} catch (err) {
+    console.warn("PDFParse load note:", err.message);
+}
 
 /**
  * Extracts page images from any PDF file (both scanned image PDFs and digital vector PDFs).
@@ -73,7 +92,7 @@ async function extractImagesFromPdf(filePath) {
     }
 
     // 2. If no embedded images found (e.g. digital vector PDF), render pages to PNG screenshots
-    if (imageBuffers.length === 0) {
+    if (imageBuffers.length === 0 && PDFParse) {
         try {
             const parser = new PDFParse({ data: new Uint8Array(data) });
             await parser.load();
@@ -101,6 +120,7 @@ async function extractImagesFromPdf(filePath) {
  * @returns {Promise<string>} Extracted text
  */
 async function extractTextFromPdf(filePath) {
+    if (!PDFParse) return "";
     try {
         const data = fs.readFileSync(filePath);
         const parser = new PDFParse({ data: new Uint8Array(data) });
