@@ -11,6 +11,14 @@
   </head>
 
   <body>
+    <!-- Ambient Animated Background Glows -->
+    <div class="ambient-glow glow-1" aria-hidden="true"></div>
+    <div class="ambient-glow glow-2" aria-hidden="true"></div>
+    <div class="ambient-glow glow-3" aria-hidden="true"></div>
+
+    <!-- Celebration Confetti Canvas -->
+    <canvas id="confettiCanvas" class="confetti-canvas" aria-hidden="true"></canvas>
+
     <div class="container">
       <!-- Header -->
       <header class="header">
@@ -29,8 +37,8 @@
         <h1>Turn reports into <em>workable data.</em></h1>
 
         <p>
-          Upload a digital or handwritten report, review the extracted data, and
-          export a clean Excel sheet.
+          Upload any digital or handwritten report. AI automatically detects the format,
+          organizes the columns, and lets you export clean Excel spreadsheets.
         </p>
       </header>
 
@@ -48,18 +56,17 @@
         </div>
       </div>
 
-      <!-- Upload Sections -->
-      <section class="upload-options">
-        <!-- Computer Generated Report -->
-        <div id="computerCard" class="upload-card computer-card">
+      <!-- Unified Upload Section -->
+      <section class="upload-options single-card-wrapper">
+        <div id="uploadCard" class="upload-card unified-card">
           <div class="card-topline">
-            <div class="card-icon computer-icon" aria-hidden="true">▤</div>
+            <div class="card-icon unified-icon" aria-hidden="true">📄</div>
           </div>
 
-          <h2>Computer-Generated Report</h2>
+          <h2>Upload Report</h2>
 
           <p class="card-description">
-            For digitally generated reports in PDF or image format.
+            Upload any handwritten slip or computer-generated report. The system automatically identifies the layout and extracts all rows.
           </p>
 
           <div class="supported">
@@ -69,9 +76,29 @@
             <span>PNG</span>
           </div>
 
+          <!-- Mode Selector -->
+          <div class="mode-selector-wrapper">
+            <span class="mode-label">Mode:</span>
+            <div class="mode-pills" role="radiogroup" aria-label="Extraction Mode">
+              <button type="button" class="mode-pill active" data-mode="auto" aria-checked="true">
+                <span class="pill-icon">🤖</span>
+                <span class="pill-title">Auto-Detect</span>
+              </button>
+              <button type="button" class="mode-pill" data-mode="fast_handwritten" aria-checked="false">
+                <span class="pill-icon">⚡</span>
+                <span class="pill-title">Fast Handwritten</span>
+                <span class="pill-speed">~1.5s</span>
+              </button>
+              <button type="button" class="mode-pill" data-mode="computer" aria-checked="false">
+                <span class="pill-icon">▤</span>
+                <span class="pill-title">Computer Report</span>
+              </button>
+            </div>
+          </div>
+
           <label
-            for="computerFile"
-            id="computerChooseBtn"
+            for="reportFileInput"
+            id="reportChooseBtn"
             class="choose-btn file-drop"
           >
             <span class="choose-icon">＋</span>
@@ -79,15 +106,15 @@
             <small>or drop a file here</small>
           </label>
 
-          <input type="file" id="computerFile" accept=".pdf,.jpg,.jpeg,.png" />
+          <input type="file" id="reportFileInput" accept=".pdf,.jpg,.jpeg,.png" />
 
           <!-- Selected file -->
           <div class="selected-file">
-            <p id="computerFileName" class="file-name"></p>
+            <p id="reportFileName" class="file-name"></p>
 
             <button
               type="button"
-              id="computerRemoveBtn"
+              id="reportRemoveBtn"
               class="remove-btn hidden"
             >
               Remove
@@ -96,74 +123,14 @@
 
           <button
             type="button"
-            id="computerUploadBtn"
+            id="processUploadBtn"
             class="process-btn"
             disabled
           >
             Process Report
           </button>
 
-          <p id="computerStatus" class="status"></p>
-        </div>
-
-        <!-- Handwritten Report -->
-        <div id="handwrittenCard" class="upload-card handwritten-card">
-          <div class="card-topline">
-            <div class="card-icon handwritten-icon" aria-hidden="true">✎</div>
-          </div>
-
-          <h2>Handwritten Report</h2>
-
-          <p class="card-description">
-            For handwritten reports in PDF or image format.
-          </p>
-
-          <div class="supported">
-            <span>PDF</span>
-            <span>JPG</span>
-            <span>JPEG</span>
-            <span>PNG</span>
-          </div>
-
-          <label
-            for="handwrittenFile"
-            id="handwrittenChooseBtn"
-            class="choose-btn file-drop"
-          >
-            <span class="choose-icon">＋</span>
-            <span>Choose report</span>
-            <small>or drop a file here</small>
-          </label>
-
-          <input
-            type="file"
-            id="handwrittenFile"
-            accept=".pdf,.jpg,.jpeg,.png"
-          />
-
-          <!-- Selected file -->
-          <div class="selected-file">
-            <p id="handwrittenFileName" class="file-name"></p>
-
-            <button
-              type="button"
-              id="handwrittenRemoveBtn"
-              class="remove-btn hidden"
-            >
-              Remove
-            </button>
-          </div>
-
-          <button
-            type="button"
-            id="handwrittenUploadBtn"
-            class="process-btn"
-            disabled
-          >
-            Process Report
-          </button>
-
-          <p id="handwrittenStatus" class="status"></p>
+          <p id="uploadStatus" class="status"></p>
         </div>
       </section>
 
@@ -173,41 +140,27 @@
           <div>
             <div class="preview-title-row">
               <h2>Report Preview</h2>
+              <span id="detectedBadge" class="detected-badge"></span>
             </div>
 
-            <p>Verify and edit the extracted data before downloading.</p>
+            <p id="previewSubtitle">
+              Verify and edit the extracted data before downloading.
+            </p>
           </div>
 
-          <button type="button" id="downloadBtn" class="download-btn">
-            Download Excel
-          </button>
+          <div class="preview-actions">
+            <button type="button" id="addRowBtn" class="add-row-btn">
+              ＋ Add Row
+            </button>
+            <button type="button" id="downloadBtn" class="download-btn">
+              Download Excel
+            </button>
+          </div>
         </div>
 
         <div class="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>Item Description</th>
-                <th>Pack Size</th>
-
-                <th>Opening Qty</th>
-                <th>Opening Value</th>
-
-                <th>Receipt Qty</th>
-                <th>Receipt Value</th>
-
-                <th>Issue Qty</th>
-                <th>Issue Value</th>
-
-                <th>Closing Qty</th>
-                <th>Closing Value</th>
-
-                <th>Dump Qty</th>
-
-                <th>M. Exp (MM/YY)</th>
-              </tr>
-            </thead>
-
+          <table id="invoiceTable">
+            <thead id="tableHead"></thead>
             <tbody id="tableBody"></tbody>
           </table>
         </div>

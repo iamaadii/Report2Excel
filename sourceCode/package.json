@@ -1,7 +1,7 @@
 {
   "name": "invoice-extractor",
   "version": "1.0.0",
-  "description": "Invoice image/PDF to Excel converter with computer-generated and handwritten invoice support",
+  "description": "Invoice image/PDF to Excel converter with computer-generated and handwritten invoice support via Grok API",
   "main": "server.js",
   "engines": {
     "node": "22.x"
@@ -11,16 +11,14 @@
     "dev": "nodemon server.js"
   },
   "dependencies": {
-    "@google/genai": "^2.22.0",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
     "express": "^4.21.2",
     "multer": "^1.4.5-lts.1",
     "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^5.6.205",
-    "sharp": "^0.34.3",
-    "tesseract.js": "^6.0.1"
+    "pdf-parse": "^2.4.5",
+    "sharp": "^0.34.3"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"

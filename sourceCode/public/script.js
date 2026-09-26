@@ -1,614 +1,352 @@
-const API_URL = "";
+const API_URL = "http://localhost:5000";
 
-let invoiceType = "";
 let invoiceRows = [];
+let invoiceType = "handwritten";
+let selectedMode = "auto";
 
-const workflowSteps = Array.from(document.querySelectorAll("[data-step]"));
-const workflowOrder = ["upload", "review", "export"];
+/* =========================
+   DOM ELEMENTS
+========================= */
 
-function setWorkflowStep(currentStep) {
-    const currentIndex = workflowOrder.indexOf(currentStep);
+const reportFileInput = document.getElementById("reportFileInput");
+const reportChooseBtn = document.getElementById("reportChooseBtn");
+const reportFileName = document.getElementById("reportFileName");
+const reportRemoveBtn = document.getElementById("reportRemoveBtn");
+const processUploadBtn = document.getElementById("processUploadBtn");
+const uploadStatus = document.getElementById("uploadStatus");
 
-    workflowSteps.forEach((stepElement) => {
-        const stepIndex = workflowOrder.indexOf(stepElement.dataset.step);
+const previewSection = document.getElementById("previewSection");
+const detectedBadge = document.getElementById("detectedBadge");
+const previewSubtitle = document.getElementById("previewSubtitle");
+const invoiceTable = document.getElementById("invoiceTable");
+const tableHead = document.getElementById("tableHead");
+const tableBody = document.getElementById("tableBody");
+const downloadBtn = document.getElementById("downloadBtn");
+const addRowBtn = document.getElementById("addRowBtn");
 
-        stepElement.classList.toggle("active", stepIndex === currentIndex);
-        stepElement.classList.toggle("completed", stepIndex < currentIndex);
+const modePills = document.querySelectorAll(".mode-pill");
 
-        if (stepIndex === currentIndex) {
-            stepElement.setAttribute("aria-current", "step");
-        } else {
-            stepElement.removeAttribute("aria-current");
-        }
-    });
-}
+const workflowSteps = Array.from(
+    document.querySelectorAll(".workflow-step[data-step]")
+);
 
-function resetWorkflowToUpload() {
-    invoiceType = "";
-    invoiceRows = [];
-    previewSection.classList.add("hidden");
-    setWorkflowStep("upload");
-    if (tableBody) {
-        tableBody.innerHTML = "";
-    }
-    computerCard?.classList.remove("card-highlight");
-    handwrittenCard?.classList.remove("card-highlight");
-    if (computerStatus) computerStatus.className = "status";
-    if (handwrittenStatus) handwrittenStatus.className = "status";
-}
+/* =========================
+   MODE SELECTION
+========================= */
 
-function redirectToReviewSection() {
-    if (!previewSection) return;
-    previewSection.classList.remove("hidden");
-    setWorkflowStep("review");
-
-    // Seamless smooth scroll directly to the review section across all devices
-    requestAnimationFrame(() => {
-        previewSection.scrollIntoView({
-            behavior: "smooth",
-            block: "start"
+modePills.forEach((pill) => {
+    pill.addEventListener("click", () => {
+        modePills.forEach((p) => {
+            p.classList.remove("active");
+            p.setAttribute("aria-checked", "false");
         });
-    });
-}
-
-workflowSteps.forEach((stepElement) => {
-    stepElement.style.cursor = "pointer";
-    stepElement.addEventListener("click", () => {
-        if (stepElement.dataset.step === "review" && invoiceRows.length > 0) {
-            redirectToReviewSection();
-        } else if (stepElement.dataset.step === "upload") {
-            window.scrollTo({ top: 0, behavior: "smooth" });
-        }
+        pill.classList.add("active");
+        pill.setAttribute("aria-checked", "true");
+        selectedMode = pill.getAttribute("data-mode") || "fast_handwritten";
     });
 });
 
-setWorkflowStep("upload");
-
 /* =========================
-   COMPUTER INVOICE
+   WORKFLOW STEPS
 ========================= */
 
-const computerCard = document.getElementById("computerCard");
+function setWorkflowStep(stepName) {
+    const stepOrder = ["upload", "review", "export"];
+    const targetIndex = stepOrder.indexOf(stepName);
 
-const computerFile = document.getElementById("computerFile");
+    if (targetIndex === -1) return;
 
-const computerFileName = document.getElementById("computerFileName");
+    workflowSteps.forEach((step) => {
+        const stepKey = step.dataset.step;
+        const currentIndex = stepOrder.indexOf(stepKey);
 
-const computerChooseBtn = document.getElementById("computerChooseBtn");
+        step.classList.remove("active", "completed");
 
-const computerUploadBtn = document.getElementById("computerUploadBtn");
-
-const computerRemoveBtn = document.getElementById("computerRemoveBtn");
-
-const computerStatus = document.getElementById("computerStatus");
-
-/* =========================
-   HANDWRITTEN INVOICE
-========================= */
-
-const handwrittenCard = document.getElementById("handwrittenCard");
-
-const handwrittenFile = document.getElementById("handwrittenFile");
-
-const handwrittenFileName = document.getElementById("handwrittenFileName");
-
-const handwrittenChooseBtn = document.getElementById("handwrittenChooseBtn");
-
-const handwrittenUploadBtn = document.getElementById("handwrittenUploadBtn");
-
-const handwrittenRemoveBtn = document.getElementById("handwrittenRemoveBtn");
-
-const handwrittenStatus = document.getElementById("handwrittenStatus");
-
-function enableDropZone(fileInput, dropZone) {
-    const dropTargets = [dropZone, dropZone.closest(".upload-card")].filter(Boolean);
-
-    dropTargets.forEach((target) => {
-        ["dragenter", "dragover"].forEach((eventName) => {
-            target.addEventListener(eventName, (event) => {
-                event.preventDefault();
-                dropZone.classList.add("drag-over");
-                target.classList.add("drag-over");
-            });
-        });
-
-        ["dragleave", "drop"].forEach((eventName) => {
-            target.addEventListener(eventName, (event) => {
-                event.preventDefault();
-                dropZone.classList.remove("drag-over");
-                target.classList.remove("drag-over");
-            });
-        });
-
-        target.addEventListener("drop", (event) => {
-            const files = event.dataTransfer.files;
-
-            if (!files.length) {
-                return;
-            }
-
-            fileInput.files = files;
-            fileInput.dispatchEvent(new Event("change", { bubbles: true }));
-        });
+        if (currentIndex < targetIndex) {
+            step.classList.add("completed");
+        } else if (currentIndex === targetIndex) {
+            step.classList.add("active");
+        }
     });
 }
 
-enableDropZone(computerFile, computerChooseBtn);
-enableDropZone(handwrittenFile, handwrittenChooseBtn);
-
 /* =========================
-   PREVIEW
+   FILE SELECTION & DRAG-AND-DROP
 ========================= */
 
-const previewSection = document.getElementById("previewSection");
+function handleFileChosen(file) {
+    if (!file) return;
 
-const tableBody = document.getElementById("tableBody");
+    reportFileName.textContent = file.name;
+    reportRemoveBtn.classList.remove("hidden");
+    processUploadBtn.disabled = false;
+    uploadStatus.className = "status";
+    uploadStatus.textContent = "Ready to process.";
 
-const downloadBtn = document.getElementById("downloadBtn");
-
-/*
- * IMPORTANT:
- *
- * We are NOT expecting an element
- * with id="tableHead".
- *
- * We find the existing <thead>
- * from the existing table.
- */
-let invoiceTable = null;
-let tableHead = null;
-
-if (tableBody) {
-    invoiceTable = tableBody.closest("table");
-
-    if (invoiceTable) {
-        tableHead = invoiceTable.querySelector("thead");
-    }
+    clearPreviewSection();
 }
 
-/* =========================
-   CHECK PREVIEW ELEMENTS
-========================= */
-
-if (!tableBody) {
-    console.error("ERROR: #tableBody was not found in index.html");
-}
-
-if (!invoiceTable) {
-    console.error("ERROR: Preview table was not found.");
-}
-
-if (!tableHead) {
-    console.error("ERROR: <thead> was not found inside preview table.");
-}
-
-/* =========================
-   CLEAR & RESET HELPERS
-========================= */
-
-function clearComputerSection() {
-    computerFile.value = "";
-    computerFileName.textContent = "";
-    computerUploadBtn.disabled = true;
-    computerRemoveBtn.classList.add("hidden");
-    computerStatus.className = "status";
-    computerStatus.textContent = "";
-    computerCard?.classList.remove("card-highlight");
-}
-
-function clearHandwrittenSection() {
-    handwrittenFile.value = "";
-    handwrittenFileName.textContent = "";
-    handwrittenUploadBtn.disabled = true;
-    handwrittenRemoveBtn.classList.add("hidden");
-    handwrittenStatus.className = "status";
-    handwrittenStatus.textContent = "";
-    handwrittenCard?.classList.remove("card-highlight");
+function clearUploadSection() {
+    reportFileInput.value = "";
+    reportFileName.textContent = "";
+    reportRemoveBtn.classList.add("hidden");
+    processUploadBtn.disabled = true;
+    uploadStatus.className = "status";
+    uploadStatus.textContent = "";
 }
 
 function clearPreviewSection() {
     invoiceRows = [];
-    invoiceType = "";
-    if (previewSection) {
-        previewSection.classList.add("hidden");
+    previewSection.classList.add("hidden");
+    tableHead.innerHTML = "";
+    tableBody.innerHTML = "";
+    detectedBadge.textContent = "";
+    detectedBadge.className = "detected-badge";
+    setWorkflowStep("upload");
+}
+
+reportFileInput.addEventListener("change", () => {
+    const file = reportFileInput.files[0];
+    if (file) {
+        handleFileChosen(file);
+    } else {
+        clearUploadSection();
     }
-    if (tableHead) {
-        tableHead.innerHTML = "";
+});
+
+reportRemoveBtn.addEventListener("click", () => {
+    clearUploadSection();
+    clearPreviewSection();
+});
+
+// Dropzone support
+const dropTargets = [reportChooseBtn, reportChooseBtn.closest(".upload-card")].filter(Boolean);
+
+dropTargets.forEach((target) => {
+    ["dragenter", "dragover"].forEach((eventName) => {
+        target.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            reportChooseBtn.classList.add("drag-over");
+            target.classList.add("drag-over");
+        });
+    });
+
+    ["dragleave", "drop"].forEach((eventName) => {
+        target.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            reportChooseBtn.classList.remove("drag-over");
+            target.classList.remove("drag-over");
+        });
+    });
+
+    target.addEventListener("drop", (e) => {
+        const files = e.dataTransfer.files;
+        if (!files || !files.length) return;
+
+        reportFileInput.files = files;
+        handleFileChosen(files[0]);
+    });
+});
+
+const uploadCard = document.getElementById("uploadCard");
+const confettiCanvas = document.getElementById("confettiCanvas");
+
+/* =========================
+   CELEBRATION CONFETTI ANIMATION
+========================= */
+
+function launchCelebration() {
+    if (!confettiCanvas) return;
+    const ctx = confettiCanvas.getContext("2d");
+    if (!ctx) return;
+
+    const width = (confettiCanvas.width = window.innerWidth);
+    const height = (confettiCanvas.height = window.innerHeight);
+
+    const colors = ["#1d8a70", "#4fd3ad", "#d16a4f", "#e59462", "#22473f", "#f3b993", "#38bdf8"];
+    const particles = [];
+    const count = 65;
+
+    for (let i = 0; i < count; i++) {
+        particles.push({
+            x: width * 0.5 + (Math.random() - 0.5) * 260,
+            y: height * 0.45 + (Math.random() - 0.5) * 100,
+            vx: (Math.random() - 0.5) * 14,
+            vy: -Math.random() * 9 - 4,
+            size: Math.random() * 7 + 4,
+            color: colors[Math.floor(Math.random() * colors.length)],
+            rotation: Math.random() * 360,
+            vRot: (Math.random() - 0.5) * 10,
+            alpha: 1
+        });
     }
-    if (tableBody) {
-        tableBody.innerHTML = "";
+
+    let frame = 0;
+    function render() {
+        ctx.clearRect(0, 0, width, height);
+        let alive = false;
+
+        particles.forEach((p) => {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.38; // gravity
+            p.vx *= 0.985;
+            p.rotation += p.vRot;
+            p.alpha -= 0.014;
+
+            if (p.alpha > 0) {
+                alive = true;
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, p.alpha);
+                ctx.translate(p.x, p.y);
+                ctx.rotate((p.rotation * Math.PI) / 180);
+                ctx.fillStyle = p.color;
+                ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.65);
+                ctx.restore();
+            }
+        });
+
+        if (alive && frame++ < 130) {
+            requestAnimationFrame(render);
+        } else {
+            ctx.clearRect(0, 0, width, height);
+        }
     }
-    if (invoiceTable) {
-        invoiceTable.removeAttribute("style");
-        invoiceTable.classList.remove("computer-table", "handwritten-table");
-    }
+    requestAnimationFrame(render);
 }
 
 /* =========================
-   COMPUTER FILE CHANGE
+   PROCESS REPORT (API CALL)
 ========================= */
 
-computerFile.addEventListener("change", () => {
-    const file = computerFile.files[0];
+processUploadBtn.addEventListener("click", async () => {
+    const file = reportFileInput.files[0];
+    if (!file) return;
 
-    if (!file) {
-        computerFileName.textContent = "";
-
-        computerUploadBtn.disabled = true;
-
-        computerRemoveBtn.classList.add("hidden");
-
-        computerStatus.textContent = "";
-
-        resetWorkflowToUpload();
-        updateUploadSections();
-
-        return;
-    }
-
-    // Clear previous handwritten generated data and preview
-    clearHandwrittenSection();
     clearPreviewSection();
 
-    computerFileName.textContent = file.name;
+    processUploadBtn.disabled = true;
+    if (uploadCard) uploadCard.classList.add("processing");
 
-    computerUploadBtn.disabled = false;
+    const statusLabel = selectedMode === "fast_handwritten"
+        ? "⚡ Fast extracting handwritten items"
+        : "Analyzing document with Groq Vision AI";
 
-    computerRemoveBtn.classList.remove("hidden");
+    uploadStatus.className = "status loading";
+    uploadStatus.innerHTML = `<span class="status-spinner"></span> <span>${statusLabel}... (<span id="liveTimer">0.0s</span>)</span>`;
 
-    computerStatus.className = "status";
-    computerStatus.textContent = "";
-
-    setWorkflowStep("upload");
-    updateUploadSections();
-});
-
-/* =========================
-   HANDWRITTEN FILE CHANGE
-========================= */
-
-handwrittenFile.addEventListener("change", () => {
-    const file = handwrittenFile.files[0];
-
-    if (!file) {
-        handwrittenFileName.textContent = "";
-
-        handwrittenUploadBtn.disabled = true;
-
-        handwrittenRemoveBtn.classList.add("hidden");
-
-        handwrittenStatus.className = "status";
-        handwrittenStatus.textContent = "";
-
-        resetWorkflowToUpload();
-        updateUploadSections();
-
-        return;
-    }
-
-    // Clear previous computer generated data and preview
-    clearComputerSection();
-    clearPreviewSection();
-
-    handwrittenFileName.textContent = file.name;
-
-    handwrittenUploadBtn.disabled = false;
-
-    handwrittenRemoveBtn.classList.remove("hidden");
-
-    handwrittenStatus.className = "status";
-    handwrittenStatus.textContent = "";
-
-    setWorkflowStep("upload");
-    updateUploadSections();
-});
-
-/* =========================
-   UPDATE UPLOAD SECTIONS
-========================= */
-
-/*
- * Both invoice types are independent.
- *
- * Selecting a computer-generated invoice
- * must NOT disable handwritten invoice.
- *
- * Selecting a handwritten invoice
- * must NOT disable computer-generated invoice.
- */
-
-function updateUploadSections() {
-    /* =========================
-         COMPUTER
-      ========================= */
-
-    computerCard.classList.remove("disabled-card");
-
-    computerFile.disabled = false;
-
-    computerChooseBtn.classList.remove("disabled");
-
-    computerUploadBtn.disabled = computerFile.files.length === 0;
-
-    /* =========================
-         HANDWRITTEN
-      ========================= */
-
-    handwrittenCard.classList.remove("disabled-card");
-
-    handwrittenFile.disabled = false;
-
-    handwrittenChooseBtn.classList.remove("disabled");
-
-    handwrittenUploadBtn.disabled = handwrittenFile.files.length === 0;
-}
-
-/* =========================
-   REMOVE COMPUTER
-========================= */
-
-computerRemoveBtn.addEventListener("click", () => {
-    computerFile.value = "";
-
-    computerFileName.textContent = "";
-
-    computerStatus.textContent = "";
-
-    computerUploadBtn.disabled = true;
-
-    computerRemoveBtn.classList.add("hidden");
-
-    resetWorkflowToUpload();
-    updateUploadSections();
-});
-
-/* =========================
-   REMOVE HANDWRITTEN
-========================= */
-
-handwrittenRemoveBtn.addEventListener("click", () => {
-    handwrittenFile.value = "";
-
-    handwrittenFileName.textContent = "";
-
-    handwrittenStatus.textContent = "";
-
-    handwrittenUploadBtn.disabled = true;
-
-    handwrittenRemoveBtn.classList.add("hidden");
-
-    resetWorkflowToUpload();
-    updateUploadSections();
-});
-
-/* =========================
-   PROCESS COMPUTER
-========================= */
-
-computerUploadBtn.addEventListener("click", async () => {
-    const file = computerFile.files[0];
-
-    if (!file) {
-        return;
-    }
-
-    // Clear any previous handwritten report and preview so contents never collide
-    clearHandwrittenSection();
-    clearPreviewSection();
-
-    computerUploadBtn.disabled = true;
-    computerStatus.className = "status";
-    computerStatus.textContent = "Processing report...";
-    handwrittenCard.classList.remove("card-highlight");
+    const startTime = Date.now();
+    const liveTimerEl = document.getElementById("liveTimer");
+    const timerInterval = setInterval(() => {
+        if (liveTimerEl) {
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+            liveTimerEl.textContent = `${elapsed}s`;
+        }
+    }, 100);
 
     try {
         const formData = new FormData();
-
         formData.append("invoice", file);
-
-        formData.append("invoiceType", "computer");
+        formData.append("mode", selectedMode);
 
         const response = await fetch(`${API_URL}/api/invoices/process`, {
             method: "POST",
-            body: formData,
+            body: formData
         });
 
         const data = await response.json().catch(() => ({}));
 
         if (!response.ok || !data.success) {
-            if (data.mismatch) {
-                const uploadedFile = file;
-
-                // Clear and delete the uploaded file from the computer section
-                computerFile.value = "";
-                computerFileName.textContent = "";
-                computerUploadBtn.disabled = true;
-                computerRemoveBtn.classList.add("hidden");
-                updateUploadSections();
-
-                computerStatus.className = "status mismatch-warning";
-                computerStatus.innerHTML = `
-                    <span>${data.message}</span>
-                    <button type="button" class="mismatch-action-btn" id="moveToHandwrittenBtn">
-                        Move file to Handwritten section &rarr;
-                    </button>
-                `;
-
-                // Handle one-tap move to Handwritten section
-                document.getElementById("moveToHandwrittenBtn")?.addEventListener("click", () => {
-                    try {
-                        const dt = new DataTransfer();
-                        dt.items.add(uploadedFile);
-                        handwrittenFile.files = dt.files;
-                        handwrittenFileName.textContent = uploadedFile.name;
-                        handwrittenRemoveBtn.classList.remove("hidden");
-                        handwrittenUploadBtn.disabled = false;
-                        updateUploadSections();
-                        handwrittenStatus.className = "status";
-                        handwrittenStatus.textContent = "File transferred. Ready to process!";
-                    } catch (_) { }
-
-                    handwrittenCard.classList.remove("card-highlight");
-                    void handwrittenCard.offsetWidth;
-                    handwrittenCard.classList.add("card-highlight");
-                    handwrittenCard.scrollIntoView({ behavior: "smooth", block: "center" });
-                });
-
-                handwrittenCard.classList.remove("card-highlight");
-                void handwrittenCard.offsetWidth; // trigger reflow to replay animation
-                handwrittenCard.classList.add("card-highlight");
-                setTimeout(() => handwrittenCard.classList.remove("card-highlight"), 4500);
-
-                // Auto-scroll target card into view on small screens
-                setTimeout(() => {
-                    handwrittenCard.scrollIntoView({ behavior: "smooth", block: "center" });
-                }, 400);
-
-                return;
-            }
-            throw new Error(data.message || "Failed to process report.");
+            throw new Error(data.message || "Failed to process document.");
         }
 
-        invoiceType = "computer";
-
+        invoiceType = data.invoiceType || "handwritten";
         invoiceRows = data.rows || [];
-        renderComputerTable(invoiceRows);
 
-        redirectToReviewSection();
+        if (invoiceRows.length === 0) {
+            throw new Error("No data rows found in this document.");
+        }
 
-        computerStatus.className = "status success";
-        computerStatus.textContent = `Successfully extracted ${invoiceRows.length} rows.`;
+        const durationText = data.timeSeconds ? ` in ${data.timeSeconds}s` : "";
+
+        // Dynamically adjust table based on detected document format
+        if (invoiceType === "handwritten") {
+            detectedBadge.className = "detected-badge handwritten";
+            detectedBadge.textContent = "✎ Handwritten Slip (4 Columns)";
+            previewSubtitle.textContent = `Extracted ${invoiceRows.length} items${durationText}. Click any cell to edit details before downloading.`;
+            renderHandwrittenTable(invoiceRows);
+        } else {
+            detectedBadge.className = "detected-badge computer";
+            detectedBadge.textContent = "▤ Computer Report (12 Columns)";
+            previewSubtitle.textContent = `Extracted ${invoiceRows.length} items${durationText}. Click any cell to edit details before downloading.`;
+            renderComputerTable(invoiceRows);
+        }
+
+        previewSection.classList.remove("hidden");
+        setWorkflowStep("review");
+
+        uploadStatus.className = "status success";
+        uploadStatus.textContent = `⚡ Extracted ${invoiceRows.length} rows successfully${durationText}!`;
+
+        // Launch celebratory confetti effect!
+        launchCelebration();
+
+        setTimeout(() => {
+            previewSection.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 150);
+
     } catch (error) {
-        console.error(error);
-
-        computerStatus.className = "status error";
-        computerStatus.textContent = error.message || "Failed to process report.";
+        console.error("Processing error:", error);
+        uploadStatus.className = "status error";
+        uploadStatus.textContent = error.message || "An error occurred while processing the document.";
     } finally {
-        computerUploadBtn.disabled = computerFile.files.length === 0;
+        clearInterval(timerInterval);
+        if (uploadCard) uploadCard.classList.remove("processing");
+        processUploadBtn.disabled = reportFileInput.files.length === 0;
     }
 });
 
 /* =========================
-   PROCESS HANDWRITTEN
+   ADD ROW ACTION
 ========================= */
 
-handwrittenUploadBtn.addEventListener("click", async () => {
-    const file = handwrittenFile.files[0];
-
-    if (!file) {
-        return;
-    }
-
-    // Clear any previous computer report and preview so contents never collide
-    clearComputerSection();
-    clearPreviewSection();
-
-    handwrittenUploadBtn.disabled = true;
-    handwrittenStatus.className = "status";
-    handwrittenStatus.textContent = "Processing handwritten report...";
-    computerCard.classList.remove("card-highlight");
-
-    try {
-        const formData = new FormData();
-
-        formData.append("invoice", file);
-
-        formData.append("invoiceType", "handwritten");
-
-        const response = await fetch(`${API_URL}/api/invoices/process`, {
-            method: "POST",
-            body: formData,
-        });
-
-        const data = await response.json().catch(() => ({}));
-
-        if (!response.ok || !data.success) {
-            if (data.mismatch) {
-                const uploadedFile = file;
-
-                // Clear and delete the uploaded file from the handwritten section
-                handwrittenFile.value = "";
-                handwrittenFileName.textContent = "";
-                handwrittenUploadBtn.disabled = true;
-                handwrittenRemoveBtn.classList.add("hidden");
-                updateUploadSections();
-
-                handwrittenStatus.className = "status mismatch-warning";
-                handwrittenStatus.innerHTML = `
-                    <span>${data.message}</span>
-                    <button type="button" class="mismatch-action-btn" id="moveToComputerBtn">
-                        Move file to Computer-Generated section &rarr;
-                    </button>
-                `;
-
-                // Handle one-tap move to Computer section
-                document.getElementById("moveToComputerBtn")?.addEventListener("click", () => {
-                    try {
-                        const dt = new DataTransfer();
-                        dt.items.add(uploadedFile);
-                        computerFile.files = dt.files;
-                        computerFileName.textContent = uploadedFile.name;
-                        computerRemoveBtn.classList.remove("hidden");
-                        computerUploadBtn.disabled = false;
-                        updateUploadSections();
-                        computerStatus.className = "status";
-                        computerStatus.textContent = "File transferred. Ready to process!";
-                    } catch (_) { }
-
-                    computerCard.classList.remove("card-highlight");
-                    void computerCard.offsetWidth;
-                    computerCard.classList.add("card-highlight");
-                    computerCard.scrollIntoView({ behavior: "smooth", block: "center" });
-                });
-
-                computerCard.classList.remove("card-highlight");
-                void computerCard.offsetWidth; // trigger reflow to replay animation
-                computerCard.classList.add("card-highlight");
-                setTimeout(() => computerCard.classList.remove("card-highlight"), 4500);
-
-                // Auto-scroll target card into view on small screens
-                setTimeout(() => {
-                    computerCard.scrollIntoView({ behavior: "smooth", block: "center" });
-                }, 400);
-
-                return;
-            }
-            throw new Error(data.message || "Failed to process report.");
+if (addRowBtn) {
+    addRowBtn.addEventListener("click", () => {
+        if (invoiceType === "handwritten") {
+            const newRow = {
+                srNo: invoiceRows.length + 1,
+                itemName: "New Item",
+                packSize: "-",
+                quantity: 1
+            };
+            invoiceRows.push(newRow);
+            renderHandwrittenTable(invoiceRows);
+        } else {
+            const newRow = {
+                itemDescription: "New Item",
+                packSize: "-",
+                openingQty: "-",
+                openingValue: "-",
+                receiptQty: "-",
+                receiptValue: "-",
+                issueQty: "-",
+                issueValue: "-",
+                closingQty: "-",
+                closingValue: "-",
+                dumpQty: "-",
+                mExp: "-"
+            };
+            invoiceRows.push(newRow);
+            renderComputerTable(invoiceRows);
         }
-
-        invoiceType = "handwritten";
-        invoiceRows = data.rows || [];
-        renderHandwrittenTable(invoiceRows);
-
-        redirectToReviewSection();
-
-        handwrittenStatus.className = "status success";
-        handwrittenStatus.textContent = `Successfully extracted ${invoiceRows.length} rows.`;
-    } catch (error) {
-        console.error(error);
-
-        handwrittenStatus.className = "status error";
-        handwrittenStatus.textContent =
-            error.message || "Failed to process report.";
-    } finally {
-        handwrittenUploadBtn.disabled = handwrittenFile.files.length === 0;
-    }
-});
+    });
+}
 
 /* =========================
-   RENDER HANDWRITTEN TABLE
+   RENDER HANDWRITTEN TABLE (4 COLUMNS)
 ========================= */
 
 function renderHandwrittenTable(rows) {
-    if (!tableHead || !tableBody) {
-        console.error("Preview table elements are missing.");
-
-        return;
-    }
-
-    /*
-     * Clean slate table styling for handwritten table
-     */
     invoiceTable.removeAttribute("style");
     invoiceTable.classList.remove("computer-table");
     invoiceTable.classList.add("handwritten-table");
@@ -616,30 +354,26 @@ function renderHandwrittenTable(rows) {
     invoiceTable.style.width = "100%";
     invoiceTable.style.minWidth = "600px";
 
-    /*
-     * EXACT handwritten headers.
-     */
     tableHead.innerHTML = `
-    <tr>
-        <th style="width: 10%;">SR.NO</th>
-        <th style="width: 50%;">ITEM NAME</th>
-        <th style="width: 22%;">PACK SIZE</th>
-        <th style="width: 18%;">QUANTITY</th>
-    </tr>
-`;
+        <tr>
+            <th style="width: 10%;">SR.NO</th>
+            <th style="width: 46%;">ITEM NAME</th>
+            <th style="width: 18%;">PACK SIZE</th>
+            <th style="width: 18%;">QUANTITY</th>
+            <th style="width: 8%;"></th>
+        </tr>
+    `;
 
     tableBody.innerHTML = "";
 
     rows.forEach((row, rowIndex) => {
         const tr = document.createElement("tr");
-
+        tr.style.setProperty("--row-index", rowIndex);
         const fields = ["srNo", "itemName", "packSize", "quantity"];
 
         fields.forEach((field) => {
             const td = document.createElement("td");
-
             td.contentEditable = "true";
-
             td.textContent = row[field] ?? "";
 
             td.addEventListener("input", () => {
@@ -649,24 +383,32 @@ function renderHandwrittenTable(rows) {
             tr.appendChild(td);
         });
 
+        // Delete Row button cell
+        const actionTd = document.createElement("td");
+        actionTd.style.textAlign = "center";
+        const delBtn = document.createElement("button");
+        delBtn.type = "button";
+        delBtn.innerHTML = "&times;";
+        delBtn.title = "Delete row";
+        delBtn.className = "row-delete-btn";
+        delBtn.addEventListener("click", () => {
+            invoiceRows.splice(rowIndex, 1);
+            // Re-index srNo for handwritten
+            invoiceRows.forEach((r, idx) => { r.srNo = idx + 1; });
+            renderHandwrittenTable(invoiceRows);
+        });
+        actionTd.appendChild(delBtn);
+        tr.appendChild(actionTd);
+
         tableBody.appendChild(tr);
     });
 }
 
 /* =========================
-   RENDER COMPUTER TABLE
+   RENDER COMPUTER TABLE (12 COLUMNS)
 ========================= */
 
 function renderComputerTable(rows) {
-    if (!tableHead || !tableBody) {
-        console.error("Preview table elements are missing.");
-
-        return;
-    }
-
-    /*
-     * Clean slate table styling for computer-generated table (12 columns)
-     */
     invoiceTable.removeAttribute("style");
     invoiceTable.classList.remove("handwritten-table");
     invoiceTable.classList.add("computer-table");
@@ -688,34 +430,34 @@ function renderComputerTable(rows) {
             <th>CLOSING VALUE</th>
             <th>DUMP QTY</th>
             <th>M.EXP</th>
+            <th></th>
         </tr>
     `;
 
     tableBody.innerHTML = "";
 
+    const fields = [
+        "itemDescription",
+        "packSize",
+        "openingQty",
+        "openingValue",
+        "receiptQty",
+        "receiptValue",
+        "issueQty",
+        "issueValue",
+        "closingQty",
+        "closingValue",
+        "dumpQty",
+        "mExp"
+    ];
+
     rows.forEach((row, rowIndex) => {
         const tr = document.createElement("tr");
-
-        const fields = [
-            "itemDescription",
-            "packSize",
-            "openingQty",
-            "openingValue",
-            "receiptQty",
-            "receiptValue",
-            "issueQty",
-            "issueValue",
-            "closingQty",
-            "closingValue",
-            "dumpQty",
-            "mExp",
-        ];
+        tr.style.setProperty("--row-index", rowIndex);
 
         fields.forEach((field) => {
             const td = document.createElement("td");
-
             td.contentEditable = "true";
-
             td.textContent = row[field] ?? "";
 
             td.addEventListener("input", () => {
@@ -724,6 +466,21 @@ function renderComputerTable(rows) {
 
             tr.appendChild(td);
         });
+
+        // Delete Row button cell
+        const actionTd = document.createElement("td");
+        actionTd.style.textAlign = "center";
+        const delBtn = document.createElement("button");
+        delBtn.type = "button";
+        delBtn.innerHTML = "&times;";
+        delBtn.title = "Delete row";
+        delBtn.className = "row-delete-btn";
+        delBtn.addEventListener("click", () => {
+            invoiceRows.splice(rowIndex, 1);
+            renderComputerTable(invoiceRows);
+        });
+        actionTd.appendChild(delBtn);
+        tr.appendChild(actionTd);
 
         tableBody.appendChild(tr);
     });
@@ -734,82 +491,46 @@ function renderComputerTable(rows) {
 ========================= */
 
 downloadBtn.addEventListener("click", async () => {
+    if (!invoiceRows.length) return;
+
+    downloadBtn.disabled = true;
+    const originalText = downloadBtn.textContent;
+    downloadBtn.textContent = "Exporting...";
+
     try {
-        if (!Array.isArray(invoiceRows) || invoiceRows.length === 0) {
-            alert("No report data available.");
-
-            return;
-        }
-
-        if (invoiceType !== "computer" && invoiceType !== "handwritten") {
-            alert("Report type is not selected.");
-
-            return;
-        }
-
-        downloadBtn.disabled = true;
-
-        downloadBtn.textContent = "Creating Excel...";
-        setWorkflowStep("export");
-
         const response = await fetch(`${API_URL}/api/invoices/download`, {
             method: "POST",
-
             headers: {
-                "Content-Type": "application/json",
+                "Content-Type": "application/json"
             },
-
             body: JSON.stringify({
-                rows: invoiceRows,
-
-                invoiceType: invoiceType,
-            }),
+                invoiceType,
+                rows: invoiceRows
+            })
         });
 
         if (!response.ok) {
-            let message = "Failed to create Excel.";
-
-            try {
-                const error = await response.json();
-
-                message = error.message || message;
-            } catch (_) { }
-
-            throw new Error(message);
+            throw new Error("Failed to export Excel file.");
         }
 
         const blob = await response.blob();
-
-        const url = URL.createObjectURL(blob);
-
+        const url = window.URL.createObjectURL(blob);
         const a = document.createElement("a");
-
         a.href = url;
-
-        a.download = "report.xlsx";
-
+        a.download = invoiceType === "handwritten" ? "handwritten_report.xlsx" : "computer_report.xlsx";
         document.body.appendChild(a);
-
         a.click();
-
         a.remove();
+        window.URL.revokeObjectURL(url);
 
-        URL.revokeObjectURL(url);
+        setWorkflowStep("export");
+        launchCelebration();
+
     } catch (error) {
-        console.error(error);
-
-        setWorkflowStep("review");
-
-        alert(error.message || "Failed to download Excel.");
+        console.error("Download error:", error);
+        alert(error.message || "Failed to download Excel file.");
     } finally {
         downloadBtn.disabled = false;
-
-        downloadBtn.textContent = "Download Excel";
+        downloadBtn.textContent = originalText;
     }
 });
-
-/* =========================
-   INITIAL STATE
-========================= */
-
-updateUploadSections();
