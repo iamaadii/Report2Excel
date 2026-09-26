@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "sourceCode/server.js",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": ["sourceCode/public/**"]
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "sourceCode/server.js"
+    }
+  ]
+}
