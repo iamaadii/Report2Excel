@@ -1,138 +1,141 @@
-# Report2Excel: AI-Powered Report to Excel Converter
+<p align="center">
+  <img src="sourceCode/public/logo.png" alt="Vasu" width="180">
+</p>
 
-An intelligent, lightning-fast web application that converts **computer-generated and handwritten report sheets (PDFs and images) into clean, beautifully formatted Microsoft Excel spreadsheets (`.xlsx`)**.
+<h1 align="center">Report2Excel</h1>
 
-Powered by the **Grok / Groq Vision AI**, Report2Excel features intelligent layout detection, a dedicated **⚡ Fast Handwritten Mode (~1.5s)**, in-browser table editing, and export-ready Excel formatting.
-
----
-
-## ✨ Key Features
-
-* **⚡ Ultra-Fast Vision Pipeline (~1.5s):**
-  * Optimized token-efficient image pipeline using Sharp.
-  * Resizes and encodes as lightweight JPEG (quality 80), reducing payload size by ~95% (from 1.4 MB down to ~75 KB).
-  * Consumes ~600 vision tokens (down from 4,000+), preventing free-tier TPM rate limits (429) entirely.
-* **🎯 Mode Selector (Default: Auto-Detect):**
-  * **🤖 Auto-Detect (Default):** Automatically inspects and classifies document layout without manual effort.
-  * **⚡ Fast Handwritten Mode (~1.5s):** Direct, lean prompt tailored for notebook pages and handwritten receipts. Automatically solves equations (e.g. `96+36=142` → `142`), resolves ditto marks (`"`), and strips unit words (`pcs`, `box`).
-  * **▤ Computer Report Mode:** Dedicated 12-column Stock & Sales report extraction.
-* **🎨 Rich Animations & Micro-Interactions:**
-  * Ambient floating organic background glows and shimmering hero typography.
-  * Futuristic laser scanning beam animation across the card during document processing.
-  * Real-time live elapsed timer counter (`0.1s... 1.4s`) and spinner during extraction.
-  * Smooth cascaded table row entrance animation.
-  * Celebratory canvas confetti particle burst on successful extraction and Excel export.
-* **📝 Interactive In-Browser Table Editing:**
-  * Click any cell to edit spelling, names, or numbers directly on your screen.
-  * **＋ Add Row** button to append missing items.
-  * **× Delete Row** button: Polished muted-gray pill button that turns soft coral-red on hover for safe row management.
-* **📱 100% Mobile & Tablet Responsive:**
-  * Fully responsive design across all screen sizes (320px to 4K displays).
-  * Zero horizontal viewport overflow; touch-friendly stacked controls and isolated table horizontal scroll.
-* **📊 Professional Excel Export (`.xlsx`):**
-  * **Header:** Vasu corporate dark emerald green (`#1D8A70`) with white bold text.
-  * **Data:** Auto-fitted column widths, centered `SR.NO` and `PACK SIZE`, bold left-aligned `ITEM NAME`, and bold right-aligned `QUANTITY` (`#,##0`).
-  * **Summary Row:** Automatically appends a styled `TOTAL` summary row calculating total quantities.
-  * **Borders:** Subtle hairline borders across all cells for clean printing and reporting.
+<p align="center">
+  Turn computer-generated and handwritten report sheets into clean, formatted Excel files.
+</p>
 
 ---
 
-## 📋 Report Formats Supported
+## Overview
 
-| Feature | 🤖 Auto-Detect / ✍️ Handwritten Slip | 🖥️ Computer-Generated Report |
+Report2Excel is a web app that converts **report sheets (PDFs and images) into formatted Excel spreadsheets (`.xlsx`)**. It uses a Vision AI API to read the report, lets you fix any mistakes on screen, and exports a ready-to-use Excel file.
+
+> **Note:** This tool was built for a specific report layout used at Vasu. The Vasu name and logo belong to their owner and are shown here only to identify the report format it was built for. No company data is included in this repository.
+
+## Screenshots
+
+| Upload | Review and Edit |
+| :---: | :---: |
+| ![Upload screen](docs/screenshots/upload.png) | ![Review screen](docs/screenshots/preview.png) |
+
+*Screenshots use dummy data.*
+
+---
+
+## Features
+
+- **Fast processing:** images are resized and compressed with Sharp before upload, so extraction usually takes about 1.5 to 5 seconds.
+- **Three modes:**
+  - **Auto-Detect (default):** identifies the report layout by itself.
+  - **Fast Handwritten:** built for notebook pages and handwritten slips. It solves written sums (`96+36=142` becomes `142`), resolves ditto marks (`"`) and removes unit words like `pcs` and `box`.
+  - **Computer Report:** extracts a 12-column stock and sales report.
+- **Edit in the browser:** click any cell to fix it, add missing rows, or delete rows.
+- **Responsive design:** works on phones, tablets and desktops.
+- **Excel export:**
+  - Dark emerald header with white bold text
+  - Auto-fitted column widths
+  - Number formatting (`#,##0`) for quantities
+  - Automatic `TOTAL` row
+  - Light borders on all cells, ready for printing
+
+## Supported Report Formats
+
+| | Handwritten Slip | Computer-Generated Report |
 | :--- | :--- | :--- |
-| **Typical Document** | Notebook slips, handwritten receipts, paper order slips | Digital invoices, billing software PDFs, printed stock sheets |
-| **Columns Extracted** | **4 Columns:**<br>• `SR.NO`<br>• `ITEM NAME`<br>• `PACK SIZE`<br>• `QUANTITY` | **12 Columns:**<br>• `ITEM DESCRIPTION`<br>• `PACK SIZE`<br>• `OPENING QTY` & `VALUE`<br>• `RECEIPT QTY` & `VALUE`<br>• `ISSUE QTY` & `VALUE`<br>• `CLOSING QTY` & `VALUE`<br>• `DUMP QTY`<br>• `M.EXP` (MM/YY) |
-| **Equation Solver** | ✅ Auto-resolves math (e.g., `96+36=142` → `142`) | N/A (Standard tabular extraction) |
-| **Average Speed** | **~1.4s – 2.5s** | **~3s – 5s** |
-| **Requires API Key?** | ⚡ Yes (`GROK_API_KEY` in `.env`) | ⚡ Yes (`GROK_API_KEY` in `.env`) |
+| **Typical source** | Notebook pages, handwritten slips | Printed or PDF stock sheets |
+| **Columns** | `SR.NO`, `ITEM NAME`, `PACK SIZE`, `QUANTITY` | `ITEM DESCRIPTION`, `PACK SIZE`, `OPENING QTY/VALUE`, `RECEIPT QTY/VALUE`, `ISSUE QTY/VALUE`, `CLOSING QTY/VALUE`, `DUMP QTY`, `M.EXP` |
+| **Math solver** | Yes | Not needed |
+| **Average speed** | ~1.5 to 2.5 s | ~3 to 5 s |
+| **Needs API key** | Yes | Yes |
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
-* **Backend:** [Node.js](https://nodejs.org/) & [Express](https://expressjs.com/)
-* **AI Vision Engine:** [Groq Cloud / xAI Grok Vision API](https://groq.com/) (e.g. `qwen/qwen3.8-27b`, `grok-2-vision-1212`)
-* **Image & PDF Processing:** [Sharp](https://sharp.pixelplumbing.com/) & [pdf-lib](https://pdf-lib.js.org/)
-* **Spreadsheet Generator:** [ExcelJS](https://github.com/exceljs/exceljs)
-* **Frontend:** Vanilla HTML5, CSS3, and JavaScript (Zero external UI framework dependencies)
+- **Backend:** Node.js, Express
+- **AI:** Vision AI API (Groq / xAI Grok)
+- **Image and PDF handling:** Sharp, pdf-lib
+- **Excel generation:** ExcelJS
+- **Frontend:** HTML, CSS, JavaScript (no UI framework)
 
 ---
 
-## 📦 Getting Started
+## Getting Started
 
 ### 1. Prerequisites
-Make sure you have [Node.js](https://nodejs.org/) (version 18 or newer) installed.
+Node.js 18 or newer.
 
-### 2. Clone and Install Dependencies
-Open your terminal and run:
+### 2. Install
 ```bash
 git clone https://github.com/iamaadii/Report2Excel.git
 cd Report2Excel/sourceCode
 npm install
 ```
 
-### 3. Environment Configuration
-Create a `.env` file inside the `sourceCode` folder:
+### 3. Configure
+Create a `.env` file inside `sourceCode`:
 ```env
-# Add your Groq / Grok API key:
-GROK_API_KEY=gsk_your_api_key_here
+GROK_API_KEY=your_api_key_here
+```
+Never commit this file. It is listed in `.gitignore`.
+
+### 4. Run
+```bash
+npm run dev     # development with auto-reload
+npm start       # production
 ```
 
-### 4. Run the Application
-- **Development Mode (with live auto-reload):**
-  ```bash
-  npm run dev
-  ```
-- **Production Mode:**
-  ```bash
-  npm start
-  ```
-
-### 5. Access the Web Interface
-Open your browser and navigate to:
+### 5. Open
 ```text
 http://localhost:5000
 ```
 
 ---
 
-## 🎯 How to Use
+## How to Use
 
-1. **Select Mode:** Choose between **🤖 Auto-Detect** (default), **⚡ Fast Handwritten (~1.5s)**, or **▤ Computer Report**.
-2. **Upload Document:** Drop your PDF, JPG, JPEG, or PNG into the upload zone or click **Choose report**.
-3. **Process:** Click **Process Report**. Watch the live laser scanner and timer indicator extract your rows in seconds.
-4. **Review & Edit:** Review the extracted table. Click any cell to fix typos, use **＋ Add Row** to add missing items, or click **×** to remove rows.
-5. **Download:** Click **Download Excel** to export a formatted `.xlsx` spreadsheet styled with Vasu corporate emerald branding.
+1. **Pick a mode:** Auto-Detect, Fast Handwritten, or Computer Report.
+2. **Upload** a PDF, JPG, JPEG or PNG.
+3. Click **Process Report**.
+4. **Review** the table. Edit cells, add rows or delete rows as needed.
+5. Click **Download Excel** to save the `.xlsx` file.
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```text
 Report2Excel/
-├── README.md                            # Public documentation and user guide
-├── notes.md                             # Technical architecture and implementation notes
+├── README.md
 └── sourceCode/
-    ├── server.js                        # Express server entry point
+    ├── server.js                    # Express server entry point
     ├── controllers/
-    │   └── invoiceController.js         # Request validation, mode handling, and Excel dispatch
+    │   └── reportController.js      # Request validation, mode handling, Excel export
     ├── middleware/
-    │   └── uploadMiddleware.js          # Multer file upload validation (type & size limits)
-    ├── public/                          # Frontend web interface
-    │   ├── index.html                   # HTML structure, mode selector, table and canvas
-    │   ├── style.css                    # Design system, animations, keyframes, and mobile media queries
-    │   ├── script.js                    # Client logic, live timer, dynamic tables, confetti, and download
-    │   ├── favicon.svg                  # Application favicon
-    │   └── logo.png                     # Vasu Healthcare branding logo
+    │   └── uploadMiddleware.js      # File upload checks (type and size)
+    ├── public/                      # Frontend
+    │   ├── index.html
+    │   ├── style.css
+    │   ├── script.js
+    │   ├── favicon.svg
+    │   └── logo.png
     ├── routes/
-    │   └── invoiceRoutes.js             # Express API routes (/process & /download)
+    │   └── reportRoutes.js          # API routes (/process, /download)
     ├── services/
-    │   ├── unifiedInvoiceService.js     # Vision AI extractor, prompt optimizer, and layout classifier
-    │   ├── pdfService.js                # PDF page image extractor (pdf-lib & Sharp)
-    │   ├── excelService.js              # Styled .xlsx generator with emerald headers and borders
-    │   └── tempStorage.js               # Temporary directory path resolver
-    ├── uploads/                         # Temporary folder for uploads (auto-cleaned)
+    │   ├── reportExtractService.js  # Vision AI extraction and layout detection
+    │   ├── pdfService.js            # PDF page to image conversion
+    │   ├── excelService.js          # Styled .xlsx generator
+    │   └── tempStorage.js           # Temporary file paths
+    ├── uploads/                     # Temporary uploads (auto-cleaned)
     └── package.json
 ```
 
+---
+
+## License
+
+For portfolio and demonstration purposes.
