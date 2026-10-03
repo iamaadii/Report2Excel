@@ -1,6 +1,6 @@
-# Report2Excel: AI-Powered Invoice & Stock Report Converter
+# Report2Excel: AI-Powered Report to Excel Converter
 
-An intelligent, lightning-fast web application that converts **computer-generated and handwritten invoice/stock report sheets (PDFs and images) into clean, beautifully formatted Microsoft Excel spreadsheets (`.xlsx`)**.
+An intelligent, lightning-fast web application that converts **computer-generated and handwritten report sheets (PDFs and images) into clean, beautifully formatted Microsoft Excel spreadsheets (`.xlsx`)**.
 
 Powered by the **Grok / Groq Vision AI**, Report2Excel features intelligent layout detection, a dedicated **⚡ Fast Handwritten Mode (~1.5s)**, in-browser table editing, and export-ready Excel formatting.
 
@@ -77,10 +77,6 @@ Create a `.env` file inside the `sourceCode` folder:
 ```env
 # Add your Groq / Grok API key:
 GROK_API_KEY=gsk_your_api_key_here
-
-# Optional: Override default model or base URL
-# GROK_MODEL=qwen/qwen3.8-27b
-# GROK_BASE_URL=https://api.groq.com/openai/v1
 ```
 
 ### 4. Run the Application
