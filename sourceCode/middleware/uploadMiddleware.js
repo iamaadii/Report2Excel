@@ -39,7 +39,7 @@ const storage =
 
 
                 const fileName =
-                    `invoice-${Date.now()}${extension}`;
+                    `report-${Date.now()}${extension}`;
 
 
                 cb(

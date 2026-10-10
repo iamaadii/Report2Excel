@@ -9,7 +9,7 @@ try {
 const { extractImagesFromPdf, extractTextFromPdf } = require("./pdfService");
 
 /**
- * Checks whether extracted PDF text has substantial, structured invoice content.
+ * Checks whether extracted PDF text has substantial, structured report content.
  * Native digital PDFs (from Tally, Marg, SAP, Busy) have dense text and numbers.
  */
 function hasSufficientDigitalText(text) {
@@ -65,6 +65,10 @@ function cleanField(val) {
 function parseExtractedText(rawText) {
     let documentType = "handwritten";
     const lower = rawText.toLowerCase();
+
+    if (lower.includes("invalid_document") || lower.includes("not an invoice") || lower.includes("not a report") || lower.includes("status: invalid")) {
+        throw new Error("Invalid document format. The uploaded file is not recognized as a valid report.");
+    }
 
     if (lower.includes("type: computer") || lower.includes("type: printed") || lower.includes("type: digital")) {
         documentType = "computer";
@@ -228,48 +232,116 @@ function parseExtractedText(rawText) {
 }
 
 /**
- * Unified Invoice Extraction Service using Grok / Groq Vision API.
+ * Unified Report Extraction Service using Grok / Groq Vision API.
  * High-speed, token-efficient extraction that eliminates JSON validation failures.
  *
  * @param {string} inputPath - Path to uploaded image or PDF
  * @returns {Promise<{ documentType: "handwritten" | "computer", rows: Array<object> }>}
  */
-async function extractInvoice(inputPath, options = {}) {
-    console.log("Starting Unified Invoice Extraction via Grok API...", inputPath);
+async function extractReport(inputPath, options = {}) {
+    console.log("Starting Unified Report Extraction via Grok/Groq API...", inputPath);
 
-    const apiKey = (
-        process.env.GROK_API_KEY ||
-        process.env.GROQ_API_KEY ||
-        ""
-    ).trim();
+    // Support multiple fallback API keys (comma-separated GROQ_API_KEYS or single GROK_API_KEY)
+    const rawKeys = [
+        process.env.GROQ_API_KEYS,
+        process.env.GROK_API_KEY,
+        process.env.GROQ_API_KEY
+    ].filter(Boolean).join(",");
 
-    const hasValidKey = apiKey && apiKey !== "your_api_key_here" && !apiKey.startsWith("your_");
+    const apiKeys = rawKeys
+        .split(",")
+        .map((k) => k.trim())
+        .filter((k) => k && k !== "your_api_key_here" && !k.startsWith("your_"));
 
-    if (!hasValidKey) {
-        throw new Error("No valid GROK_API_KEY found in .env. Please configure your API key.");
+    if (apiKeys.length === 0) {
+        throw new Error("No valid GROK_API_KEY found in server configuration (.env). Please set GROK_API_KEY.");
     }
-
-    const isXAI = apiKey.startsWith("xai-");
-    const defaultBaseUrl = isXAI ? "https://api.x.ai/v1" : "https://api.groq.com/openai/v1";
-    const baseUrl = (process.env.GROK_BASE_URL || process.env.GROQ_BASE_URL || defaultBaseUrl).replace(/\/+$/, "");
-
-    const defaultModel = isXAI ? "grok-2-vision-1212" : "qwen/qwen3.8-27b";
-    const modelName = process.env.GROK_MODEL || process.env.GROQ_MODEL || defaultModel;
 
     const mode = (options.mode || "auto").toLowerCase();
     const isHandwrittenMode = mode.includes("hand") || mode === "fast";
     const isComputerMode = mode.includes("comp");
 
-    const providerLabel = isXAI ? "xAI Grok" : "Groq AI";
-    console.log(`Analyzing document via ${providerLabel} (${modelName}) [Mode: ${mode}]...`);
-
     const ext = path.extname(inputPath).toLowerCase();
     const startTime = Date.now();
 
+    // Helper to call OpenAI-compatible Vision/Text API with Key Rotation & Rate-Limit Retries
+    const executeWithKeyRotation = async (makePayload) => {
+        let lastError = null;
+
+        for (let keyIdx = 0; keyIdx < apiKeys.length; keyIdx++) {
+            const currentKey = apiKeys[keyIdx];
+            const isXAI = currentKey.startsWith("xai-");
+            const defaultBaseUrl = isXAI ? "https://api.x.ai/v1" : "https://api.groq.com/openai/v1";
+            const baseUrl = (process.env.GROK_BASE_URL || process.env.GROQ_BASE_URL || defaultBaseUrl).replace(/\/+$/, "");
+            const defaultModel = isXAI ? "grok-2-vision-1212" : "qwen/qwen3.8-27b";
+            const modelName = process.env.GROK_MODEL || process.env.GROQ_MODEL || defaultModel;
+            const providerLabel = isXAI ? "xAI Grok" : "Groq AI";
+
+            const payload = makePayload(modelName, isXAI);
+
+            let retries = 0;
+            let success = false;
+            let resultData = null;
+
+            while (!success && retries < 3) {
+                try {
+                    const response = await fetch(`${baseUrl}/chat/completions`, {
+                        method: "POST",
+                        headers: {
+                            "Authorization": `Bearer ${currentKey}`,
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.status === 429) {
+                        const errBody = await response.text();
+                        const isDailyLimit = errBody.includes("tokens per day") || errBody.includes("(TPD)") || errBody.includes("quota");
+
+                        if (isDailyLimit) {
+                            console.warn(`[Key ${keyIdx + 1}/${apiKeys.length}] Daily quota reached for current key.`);
+                            lastError = new Error("Daily AI Quota Reached. All configured free-tier tokens have been exhausted.");
+                            // Break out of retry loop to attempt the next API key in the list immediately!
+                            break;
+                        }
+
+                        // Short-term rate limit (TPM/RPM)
+                        retries++;
+                        let waitSeconds = 4;
+                        const timeMatch = errBody.match(/try again in (?:(\d+)m)?([\d\.]+)s/i);
+                        if (timeMatch) {
+                            const mins = timeMatch[1] ? parseInt(timeMatch[1], 10) : 0;
+                            const secs = timeMatch[2] ? Math.ceil(parseFloat(timeMatch[2])) : 0;
+                            waitSeconds = Math.min(mins * 60 + secs + 1, 15);
+                        }
+
+                        console.warn(`${providerLabel} short-term 429. Waiting ${waitSeconds}s before retry (attempt ${retries}/3)...`);
+                        await new Promise((r) => setTimeout(r, waitSeconds * 1000));
+                        continue;
+                    }
+
+                    if (!response.ok) {
+                        const errText = await response.text();
+                        throw new Error(`${providerLabel} Error HTTP ${response.status}: ${errText}`);
+                    }
+
+                    resultData = await response.json();
+                    return resultData;
+                } catch (err) {
+                    lastError = err;
+                    if (retries >= 2 || err.message.includes("Daily AI Quota")) break;
+                    retries++;
+                    await new Promise((r) => setTimeout(r, 1500));
+                }
+            }
+        }
+
+        throw lastError || new Error("Failed to process document with configured AI services.");
+    };
+
     // 1. Digital PDF Fast-Track:
     // If the PDF contains a clean native text layer (from Tally, Marg, SAP, ERP),
-    // extract directly via high-speed text API. This takes ~1.5s, uses zero vision tokens,
-    // and eliminates Groq 429 TPM rate limits while guaranteeing 100% character accuracy!
+    // extract directly via high-speed text API.
     if (ext === ".pdf") {
         let digitalText = "";
         try {
@@ -283,17 +355,17 @@ async function extractInvoice(inputPath, options = {}) {
 
             let textPrompt;
             if (isHandwrittenMode) {
-                textPrompt = `You are a high-speed invoice data extractor. Extract rows from this invoice text:
+                textPrompt = `You are a high-speed report data extractor. Extract rows from this report text:
 Line 1: TYPE: handwritten
 Each row: srNo|itemName|packSize|quantity
 Clean quantities. Plain lines only, pipe separated.`;
             } else if (isComputerMode) {
-                textPrompt = `You are an invoice data extractor. Extract all product rows from this computer stock & sales report text:
+                textPrompt = `You are a report data extractor. Extract all product rows from this computer stock & sales report text:
 Line 1: TYPE: computer
 Each row: itemDescription|packSize|openingQty|openingValue|receiptQty|receiptValue|issueQty|issueValue|closingQty|closingValue|dumpQty|mExp
 Write - for zero or empty fields. Exactly 11 pipe characters per line. Plain text only.`;
             } else {
-                textPrompt = `You are an invoice extractor. Determine document type on line 1:
+                textPrompt = `You are a report extractor. Determine document type on line 1:
 TYPE: handwritten  OR  TYPE: computer
 
 If handwritten, output rows as:
@@ -305,48 +377,35 @@ itemDescription|packSize|openingQty|openingValue|receiptQty|receiptValue|issueQt
 Plain lines only. No markdown.`;
             }
 
-            const textPayload = {
-                model: modelName,
-                messages: [
-                    {
-                        role: "user",
-                        content: `${textPrompt}\n\nDocument text:\n${digitalText.substring(0, 16000)}`
-                    }
-                ],
-                temperature: 0.1,
-                max_tokens: isHandwrittenMode ? 600 : (isXAI ? 4096 : 920)
-            };
-
-            if (!isXAI) textPayload.reasoning_effort = "none";
-
             try {
-                const textRes = await fetch(`${baseUrl}/chat/completions`, {
-                    method: "POST",
-                    headers: {
-                        "Authorization": `Bearer ${apiKey}`,
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify(textPayload)
-                });
+                const textData = await executeWithKeyRotation((modelName, isXAI) => ({
+                    model: modelName,
+                    messages: [
+                        {
+                            role: "user",
+                            content: `${textPrompt}\n\nDocument text:\n${digitalText.substring(0, 16000)}`
+                        }
+                    ],
+                    temperature: 0.1,
+                    max_tokens: isHandwrittenMode ? 600 : (isXAI ? 4096 : 920),
+                    reasoning_effort: isXAI ? undefined : "none"
+                }));
 
-                if (textRes.ok) {
-                    const textData = await textRes.json();
-                    const textContent = textData.choices?.[0]?.message?.content || "";
-                    const { documentType, rows } = parseExtractedText(textContent);
+                const textContent = textData?.choices?.[0]?.message?.content || "";
+                const { documentType, rows } = parseExtractedText(textContent);
 
-                    if (rows.length > 0) {
-                        const durationSeconds = ((Date.now() - startTime) / 1000).toFixed(1);
-                        const finalType = isHandwrittenMode ? "handwritten" : (isComputerMode ? "computer" : documentType);
-                        console.log(`${providerLabel} [Fast-Track] Extraction Successful: Detected "${finalType}", extracted ${rows.length} row(s) in ${durationSeconds}s.`);
-                        return {
-                            documentType: finalType,
-                            rows,
-                            timeSeconds: parseFloat(durationSeconds)
-                        };
-                    }
+                if (rows.length > 0) {
+                    const durationSeconds = ((Date.now() - startTime) / 1000).toFixed(1);
+                    const finalType = isHandwrittenMode ? "handwritten" : (isComputerMode ? "computer" : documentType);
+                    console.log(`[Fast-Track] Extraction Successful: Detected "${finalType}", extracted ${rows.length} row(s) in ${durationSeconds}s.`);
+                    return {
+                        documentType: finalType,
+                        rows,
+                        timeSeconds: parseFloat(durationSeconds)
+                    };
                 }
             } catch (textErr) {
-                console.warn("[Fast-Track] Direct text API call failed, falling back to vision:", textErr.message);
+                console.warn("[Fast-Track] Direct text API call note, falling back to vision:", textErr.message);
             }
             console.log("[Fast-Track] Direct text yielded no rows. Falling back to vision rendering...");
         }
@@ -359,17 +418,26 @@ Plain lines only. No markdown.`;
         if (extracted && extracted.length > 0) {
             imageBuffers = extracted;
         } else {
-            throw new Error("Unable to extract page images from PDF for API vision processing.");
+            throw new Error("Unable to read or extract page images from this PDF. Please check if the file is encrypted or corrupted.");
         }
     } else {
         imageBuffers = [fs.readFileSync(inputPath)];
     }
 
-    // Lean, high-speed prompts tailored to user request
+    // Protect against overwhelming rate limits with very large PDFs
+    if (imageBuffers.length > 8) {
+        console.warn(`Document has ${imageBuffers.length} pages. Limiting to first 8 pages to avoid rate limit rejection.`);
+        imageBuffers = imageBuffers.slice(0, 8);
+    }
+
+    // Lean, high-speed prompts tailored to user request with strict document validation
     let prompt;
     if (isHandwrittenMode) {
-        prompt = `You are a high-speed invoice data extractor. Quickly extract all product items from this handwritten invoice slip.
-Output format:
+        prompt = `You are a report data extractor. First verify: is this a handwritten report, slip, or order sheet with product items?
+If NO (e.g., photo of a person, landscape, random letter, receipt without line items, or unrelated document), reply ONLY:
+STATUS: INVALID_DOCUMENT
+
+If YES, output format:
 Line 1: TYPE: handwritten
 Each row: srNo|itemName|packSize|quantity
 
@@ -379,12 +447,20 @@ Rules:
 - Clean quantity (e.g., resolve equations "96+36=142" -> 142, strip words like Pcs or Box).
 - Plain lines only. No markdown, no commentary.`;
     } else if (isComputerMode) {
-        prompt = `You are an invoice data extractor. Extract rows from this computer stock & sales report.
+        prompt = `You are a report data extractor. First verify: is this a computer-generated stock & sales report or structured tabular report?
+If NO (e.g., random photo, unrelated document, landscape, or personal photo), reply ONLY:
+STATUS: INVALID_DOCUMENT
+
+If YES, output rows:
 Line 1: TYPE: computer
 Each row: itemDescription|packSize|openingQty|openingValue|receiptQty|receiptValue|issueQty|issueValue|closingQty|closingValue|dumpQty|mExp
 Write - for zero or empty fields. Exactly 11 pipe characters per line. Plain text only.`;
     } else {
-        prompt = `You are an invoice extractor. Determine document type on line 1:
+        prompt = `You are a report extractor. First verify: is this a handwritten report slip or computer stock/sales report?
+If NO (e.g., photo of an object, person, ID card, random text, or unrelated document), reply ONLY:
+STATUS: INVALID_DOCUMENT
+
+If YES, determine document type on line 1:
 TYPE: handwritten  OR  TYPE: computer
 
 If handwritten, output rows as:
@@ -417,100 +493,49 @@ Plain lines only. No markdown.`;
             base64Data = imgBuffer.toString("base64");
         }
 
-        const payload = {
-            model: modelName,
-            messages: [
-                {
-                    role: "user",
-                    content: [
-                        { type: "text", text: prompt },
-                        {
-                            type: "image_url",
-                            image_url: {
-                                url: `data:image/jpeg;base64,${base64Data}`
+        const data = await executeWithKeyRotation((modelName, isXAI) => {
+            const payload = {
+                model: modelName,
+                messages: [
+                    {
+                        role: "user",
+                        content: [
+                            { type: "text", text: prompt },
+                            {
+                                type: "image_url",
+                                image_url: {
+                                    url: `data:image/jpeg;base64,${base64Data}`
+                                }
                             }
-                        }
-                    ]
-                }
-            ],
-            temperature: 0.1
-        };
+                        ]
+                    }
+                ],
+                temperature: 0.1,
+                max_tokens: isHandwrittenMode ? 600 : (isXAI ? 4096 : 920)
+            };
 
-        if (process.env.GROK_MAX_TOKENS) {
-            payload.max_tokens = parseInt(process.env.GROK_MAX_TOKENS, 10);
-        } else {
-            // Groq free-tier enforces a strict 1,000 output tokens per minute (OTPM) limit.
-            // Keeping max_tokens at 920 guarantees requests never get rejected upfront.
-            payload.max_tokens = isHandwrittenMode ? 600 : (isXAI ? 4096 : 920);
-        }
-
-        if (!isXAI) {
-            payload.reasoning_effort = "none";
-        }
-
-        const callApi = async () => {
-            return await fetch(`${baseUrl}/chat/completions`, {
-                method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${apiKey}`,
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(payload)
-            });
-        };
-
-        let response = await callApi();
-
-        // Parse rate limit errors
-        let retries = 0;
-        while (response.status === 429 && retries < 3) {
-            retries++;
-            const errBody = await response.text();
-
-            if (errBody.includes("tokens per day") || errBody.includes("(TPD)")) {
-                const timeMatch = errBody.match(/try again in (?:(\d+)m)?([\d\.]+)s/i);
-                const waitFormatted = timeMatch ? (timeMatch[1] ? `${timeMatch[1]}m ${Math.round(timeMatch[2])}s` : `${Math.round(timeMatch[2])}s`) : "a few minutes";
-                throw new Error(`Groq AI Free Tier Daily Quota Reached (200,000 tokens/day limit). Resets in ~${waitFormatted}.`);
+            if (process.env.GROK_MAX_TOKENS) {
+                payload.max_tokens = parseInt(process.env.GROK_MAX_TOKENS, 10);
             }
 
-            let waitSeconds = 5;
-            const timeMatch = errBody.match(/try again in (?:(\d+)m)?([\d\.]+)s/i);
-            if (timeMatch) {
-                const mins = timeMatch[1] ? parseInt(timeMatch[1], 10) : 0;
-                const secs = timeMatch[2] ? Math.ceil(parseFloat(timeMatch[2])) : 0;
-                waitSeconds = mins * 60 + secs + 1;
+            if (!isXAI) {
+                payload.reasoning_effort = "none";
             }
 
-            if (waitSeconds > 30) {
-                throw new Error(`Groq AI rate limit exceeded. Please wait ${waitSeconds}s before retrying.`);
-            }
+            return payload;
+        });
 
-            console.warn(`${providerLabel} rate limit (429). Waiting ${waitSeconds}s before automatic retry (attempt ${retries}/3)...`);
-            await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
-            response = await callApi();
-        }
-
-        if (!response.ok) {
-            const errText = await response.text();
-            throw new Error(`${providerLabel} API Error HTTP ${response.status}: ${errText}`);
-        }
-
-        const data = await response.json();
         const messageContent = data.choices?.[0]?.message?.content || "";
         return parseExtractedText(messageContent);
     };
 
-    // Process pages in parallel batches of 2 for fast multi-page handling
-    const batchSize = 2;
-    for (let i = 0; i < imageBuffers.length; i += batchSize) {
-        const batch = imageBuffers.slice(i, i + batchSize);
-        const results = await Promise.all(batch.map((buf) => processPageImage(buf)));
-        for (const res of results) {
-            if (res.documentType) {
-                detectedDocumentType = isHandwrittenMode ? "handwritten" : (isComputerMode ? "computer" : res.documentType);
-            }
-            allExtractedRows.push(...res.rows);
+    // Process pages in serial/small batches to respect token limits
+    for (let i = 0; i < imageBuffers.length; i++) {
+        const res = await processPageImage(imageBuffers[i]);
+        if (res.documentType) {
+            detectedDocumentType = isHandwrittenMode ? "handwritten" : (isComputerMode ? "computer" : res.documentType);
         }
+        allExtractedRows.push(...res.rows);
     }
 
     if (allExtractedRows.length === 0) {
@@ -518,7 +543,7 @@ Plain lines only. No markdown.`;
     }
 
     const durationSeconds = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`${providerLabel} Extraction Successful: Detected "${detectedDocumentType}", extracted ${allExtractedRows.length} row(s) in ${durationSeconds}s.`);
+    console.log(`Extraction Successful: Detected "${detectedDocumentType}", extracted ${allExtractedRows.length} row(s) in ${durationSeconds}s.`);
 
     return {
         documentType: detectedDocumentType,
@@ -528,5 +553,5 @@ Plain lines only. No markdown.`;
 }
 
 module.exports = {
-    extractInvoice
+    extractReport
 };

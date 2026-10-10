@@ -132,7 +132,24 @@ async function extractTextFromPdf(filePath) {
     }
 }
 
+/**
+ * Returns the page count of a PDF file using pdf-lib.
+ * 
+ * @param {string} filePath - Path to PDF file
+ * @returns {Promise<number>} Number of pages
+ */
+async function getPdfPageCount(filePath) {
+    try {
+        const data = fs.readFileSync(filePath);
+        const doc = await PDFDocument.load(data, { ignoreEncryption: true });
+        return doc.getPageCount();
+    } catch (err) {
+        return 1;
+    }
+}
+
 module.exports = {
     extractImagesFromPdf,
-    extractTextFromPdf
+    extractTextFromPdf,
+    getPdfPageCount
 };

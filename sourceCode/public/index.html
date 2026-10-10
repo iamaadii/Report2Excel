@@ -66,11 +66,16 @@
           <h2>Upload Report</h2>
 
           <p class="card-description">
-            Upload any handwritten slip or computer-generated report. The system automatically identifies the layout and extracts all rows.
+            Upload any handwritten slip or computer-generated report (<strong>1 page max</strong>). The system automatically identifies the layout and extracts all rows.
           </p>
 
+          <div class="single-page-notice">
+            <span class="notice-icon">ℹ️</span>
+            <span>Single-page PDF or single image (JPG, PNG) only</span>
+          </div>
+
           <div class="supported">
-            <span>PDF</span>
+            <span>Single-Page PDF</span>
             <span>JPG</span>
             <span>JPEG</span>
             <span>PNG</span>
@@ -159,7 +164,7 @@
         </div>
 
         <div class="table-container">
-          <table id="invoiceTable">
+          <table id="reportTable">
             <thead id="tableHead"></thead>
             <tbody id="tableBody"></tbody>
           </table>

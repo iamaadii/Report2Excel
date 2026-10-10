@@ -2,8 +2,8 @@ const API_URL = (typeof window !== "undefined" && window.location.origin && !win
     ? window.location.origin 
     : "http://localhost:5000";
 
-let invoiceRows = [];
-let invoiceType = "handwritten";
+let reportRows = [];
+let reportType = "handwritten";
 let selectedMode = "auto";
 
 /* =========================
@@ -20,7 +20,7 @@ const uploadStatus = document.getElementById("uploadStatus");
 const previewSection = document.getElementById("previewSection");
 const detectedBadge = document.getElementById("detectedBadge");
 const previewSubtitle = document.getElementById("previewSubtitle");
-const invoiceTable = document.getElementById("invoiceTable");
+const reportTable = document.getElementById("reportTable");
 const tableHead = document.getElementById("tableHead");
 const tableBody = document.getElementById("tableBody");
 const downloadBtn = document.getElementById("downloadBtn");
@@ -79,11 +79,25 @@ function setWorkflowStep(stepName) {
 function handleFileChosen(file) {
     if (!file) return;
 
+    // Client-side quick checks
+    const ext = file.name.split(".").pop().toLowerCase();
+    if (!["pdf", "jpg", "jpeg", "png"].includes(ext)) {
+        uploadStatus.className = "status error";
+        uploadStatus.innerHTML = `
+            <div class="error-msg-box">
+                <span class="error-title">⚠️ Unsupported file type (${file.name})</span>
+                <span class="status-tip">💡 Tip: Please select only a single-page PDF or a single image (JPG, PNG).</span>
+            </div>
+        `;
+        clearUploadSection();
+        return;
+    }
+
     reportFileName.textContent = file.name;
     reportRemoveBtn.classList.remove("hidden");
     processUploadBtn.disabled = false;
     uploadStatus.className = "status";
-    uploadStatus.textContent = "Ready to process.";
+    uploadStatus.textContent = "Ready to process (Single document).";
 
     clearPreviewSection();
 }
@@ -98,7 +112,7 @@ function clearUploadSection() {
 }
 
 function clearPreviewSection() {
-    invoiceRows = [];
+    reportRows = [];
     previewSection.classList.add("hidden");
     tableHead.innerHTML = "";
     tableBody.innerHTML = "";
@@ -144,6 +158,17 @@ dropTargets.forEach((target) => {
     target.addEventListener("drop", (e) => {
         const files = e.dataTransfer.files;
         if (!files || !files.length) return;
+
+        if (files.length > 1) {
+            uploadStatus.className = "status error";
+            uploadStatus.innerHTML = `
+                <div class="error-msg-box">
+                    <span class="error-title">⚠️ Multiple files dropped (${files.length} files)</span>
+                    <span class="status-tip">💡 Tip: Please drop only 1 single file at a time (1-page PDF or 1 image).</span>
+                </div>
+            `;
+            return;
+        }
 
         reportFileInput.files = files;
         handleFileChosen(files[0]);
@@ -248,10 +273,10 @@ processUploadBtn.addEventListener("click", async () => {
 
     try {
         const formData = new FormData();
-        formData.append("invoice", file);
+        formData.append("report", file);
         formData.append("mode", selectedMode);
 
-        const response = await fetch(`${API_URL}/api/invoices/process`, {
+        const response = await fetch(`${API_URL}/api/reports/process`, {
             method: "POST",
             body: formData
         });
@@ -259,36 +284,41 @@ processUploadBtn.addEventListener("click", async () => {
         const data = await response.json().catch(() => ({}));
 
         if (!response.ok || !data.success) {
-            throw new Error(data.message || "Failed to process document.");
+            const err = new Error(data.message || "Failed to process document.");
+            err.tip = data.tip || "";
+            err.category = data.category || "general";
+            throw err;
         }
 
-        invoiceType = data.invoiceType || "handwritten";
-        invoiceRows = data.rows || [];
+        reportType = data.invoiceType || "handwritten";
+        reportRows = data.rows || [];
 
-        if (invoiceRows.length === 0) {
-            throw new Error("No data rows found in this document.");
+        if (reportRows.length === 0) {
+            const emptyErr = new Error("No data rows found in this document.");
+            emptyErr.tip = "Ensure the document has readable product tables or stock rows and is right-side up.";
+            throw emptyErr;
         }
 
         const durationText = data.timeSeconds ? ` in ${data.timeSeconds}s` : "";
 
         // Dynamically adjust table based on detected document format
-        if (invoiceType === "handwritten") {
+        if (reportType === "handwritten") {
             detectedBadge.className = "detected-badge handwritten";
             detectedBadge.textContent = "✎ Handwritten Slip (4 Columns)";
-            previewSubtitle.textContent = `Extracted ${invoiceRows.length} items${durationText}. Click any cell to edit details before downloading.`;
-            renderHandwrittenTable(invoiceRows);
+            previewSubtitle.textContent = `Extracted ${reportRows.length} items${durationText}. Click any cell to edit details before downloading.`;
+            renderHandwrittenTable(reportRows);
         } else {
             detectedBadge.className = "detected-badge computer";
             detectedBadge.textContent = "▤ Computer Report (12 Columns)";
-            previewSubtitle.textContent = `Extracted ${invoiceRows.length} items${durationText}. Click any cell to edit details before downloading.`;
-            renderComputerTable(invoiceRows);
+            previewSubtitle.textContent = `Extracted ${reportRows.length} items${durationText}. Click any cell to edit details before downloading.`;
+            renderComputerTable(reportRows);
         }
 
         previewSection.classList.remove("hidden");
         setWorkflowStep("review");
 
         uploadStatus.className = "status success";
-        uploadStatus.textContent = `⚡ Extracted ${invoiceRows.length} rows successfully${durationText}!`;
+        uploadStatus.textContent = `⚡ Extracted ${reportRows.length} rows successfully${durationText}!`;
 
         // Launch celebratory confetti effect!
         launchCelebration();
@@ -300,7 +330,20 @@ processUploadBtn.addEventListener("click", async () => {
     } catch (error) {
         console.error("Processing error:", error);
         uploadStatus.className = "status error";
-        uploadStatus.textContent = error.message || "An error occurred while processing the document.";
+        
+        let tipHtml = "";
+        if (error.tip) {
+            tipHtml = `<span class="status-tip">💡 Tip: ${error.tip}</span>`;
+        } else if (error.message && (error.message.includes("quota") || error.message.includes("limit"))) {
+            tipHtml = `<span class="status-tip">💡 Tip: AI free limit was reached. You can try a smaller file, switch to Fast Handwritten mode, or retry shortly.</span>`;
+        }
+
+        uploadStatus.innerHTML = `
+            <div class="error-msg-box">
+                <span class="error-title">⚠️ ${error.message || "An error occurred while processing the document."}</span>
+                ${tipHtml}
+            </div>
+        `;
     } finally {
         clearInterval(timerInterval);
         if (uploadCard) uploadCard.classList.remove("processing");
@@ -314,15 +357,15 @@ processUploadBtn.addEventListener("click", async () => {
 
 if (addRowBtn) {
     addRowBtn.addEventListener("click", () => {
-        if (invoiceType === "handwritten") {
+        if (reportType === "handwritten") {
             const newRow = {
-                srNo: invoiceRows.length + 1,
+                srNo: reportRows.length + 1,
                 itemName: "New Item",
                 packSize: "-",
                 quantity: 1
             };
-            invoiceRows.push(newRow);
-            renderHandwrittenTable(invoiceRows);
+            reportRows.push(newRow);
+            renderHandwrittenTable(reportRows);
         } else {
             const newRow = {
                 itemDescription: "New Item",
@@ -338,8 +381,8 @@ if (addRowBtn) {
                 dumpQty: "-",
                 mExp: "-"
             };
-            invoiceRows.push(newRow);
-            renderComputerTable(invoiceRows);
+            reportRows.push(newRow);
+            renderComputerTable(reportRows);
         }
     });
 }
@@ -349,12 +392,12 @@ if (addRowBtn) {
 ========================= */
 
 function renderHandwrittenTable(rows) {
-    invoiceTable.removeAttribute("style");
-    invoiceTable.classList.remove("computer-table");
-    invoiceTable.classList.add("handwritten-table");
-    invoiceTable.style.tableLayout = "fixed";
-    invoiceTable.style.width = "100%";
-    invoiceTable.style.minWidth = "600px";
+    reportTable.removeAttribute("style");
+    reportTable.classList.remove("computer-table");
+    reportTable.classList.add("handwritten-table");
+    reportTable.style.tableLayout = "fixed";
+    reportTable.style.width = "100%";
+    reportTable.style.minWidth = "600px";
 
     tableHead.innerHTML = `
         <tr>
@@ -379,7 +422,7 @@ function renderHandwrittenTable(rows) {
             td.textContent = row[field] ?? "";
 
             td.addEventListener("input", () => {
-                invoiceRows[rowIndex][field] = td.textContent.trim();
+                reportRows[rowIndex][field] = td.textContent.trim();
             });
 
             tr.appendChild(td);
@@ -394,10 +437,10 @@ function renderHandwrittenTable(rows) {
         delBtn.title = "Delete row";
         delBtn.className = "row-delete-btn";
         delBtn.addEventListener("click", () => {
-            invoiceRows.splice(rowIndex, 1);
+            reportRows.splice(rowIndex, 1);
             // Re-index srNo for handwritten
-            invoiceRows.forEach((r, idx) => { r.srNo = idx + 1; });
-            renderHandwrittenTable(invoiceRows);
+            reportRows.forEach((r, idx) => { r.srNo = idx + 1; });
+            renderHandwrittenTable(reportRows);
         });
         actionTd.appendChild(delBtn);
         tr.appendChild(actionTd);
@@ -411,12 +454,12 @@ function renderHandwrittenTable(rows) {
 ========================= */
 
 function renderComputerTable(rows) {
-    invoiceTable.removeAttribute("style");
-    invoiceTable.classList.remove("handwritten-table");
-    invoiceTable.classList.add("computer-table");
-    invoiceTable.style.tableLayout = "auto";
-    invoiceTable.style.width = "max-content";
-    invoiceTable.style.minWidth = "1200px";
+    reportTable.removeAttribute("style");
+    reportTable.classList.remove("handwritten-table");
+    reportTable.classList.add("computer-table");
+    reportTable.style.tableLayout = "auto";
+    reportTable.style.width = "max-content";
+    reportTable.style.minWidth = "1200px";
 
     tableHead.innerHTML = `
         <tr>
@@ -463,7 +506,7 @@ function renderComputerTable(rows) {
             td.textContent = row[field] ?? "";
 
             td.addEventListener("input", () => {
-                invoiceRows[rowIndex][field] = td.textContent.trim();
+                reportRows[rowIndex][field] = td.textContent.trim();
             });
 
             tr.appendChild(td);
@@ -478,8 +521,8 @@ function renderComputerTable(rows) {
         delBtn.title = "Delete row";
         delBtn.className = "row-delete-btn";
         delBtn.addEventListener("click", () => {
-            invoiceRows.splice(rowIndex, 1);
-            renderComputerTable(invoiceRows);
+            reportRows.splice(rowIndex, 1);
+            renderComputerTable(reportRows);
         });
         actionTd.appendChild(delBtn);
         tr.appendChild(actionTd);
@@ -493,21 +536,22 @@ function renderComputerTable(rows) {
 ========================= */
 
 downloadBtn.addEventListener("click", async () => {
-    if (!invoiceRows.length) return;
+    if (!reportRows.length) return;
 
     downloadBtn.disabled = true;
     const originalText = downloadBtn.textContent;
     downloadBtn.textContent = "Exporting...";
 
     try {
-        const response = await fetch(`${API_URL}/api/invoices/download`, {
+        const response = await fetch(`${API_URL}/api/reports/download`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                invoiceType,
-                rows: invoiceRows
+                reportType,
+                invoiceType: reportType,
+                rows: reportRows
             })
         });
 
@@ -519,7 +563,7 @@ downloadBtn.addEventListener("click", async () => {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = invoiceType === "handwritten" ? "handwritten_report.xlsx" : "computer_report.xlsx";
+        a.download = reportType === "handwritten" ? "handwritten_report.xlsx" : "computer_report.xlsx";
         document.body.appendChild(a);
         a.click();
         a.remove();

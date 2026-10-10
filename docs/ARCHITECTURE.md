@@ -116,19 +116,82 @@ Users can select their desired mode or leave it on **🤖 Auto-Detect** (default
 
 ---
 
-## 5. Directory Breakdown
+## 5. Environment Variables & Configuration
+
+The application requires at least one Vision API key configured in `sourceCode/.env`:
+
+| Variable | Required? | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `GROK_API_KEY` / `GROQ_API_KEY` | **Yes** | — | API key for Groq Cloud (`gsk_...`) or xAI (`xai-...`). |
+| `GROK_BASE_URL` / `GROQ_BASE_URL` | No | Auto-detected | `https://api.groq.com/openai/v1` or `https://api.x.ai/v1`. |
+| `GROK_MODEL` / `GROQ_MODEL` | No | Auto-detected | Defaults to `qwen/qwen3.8-27b` (Groq) or `grok-2-vision-1212` (xAI). |
+| `GROK_MAX_TOKENS` | No | `920` (Groq) | Max completion tokens. Keep ≤ 950 on Groq free-tier to prevent OTPM 429. |
+| `PORT` | No | `5000` | Express HTTP server port for local development. |
+
+---
+
+## 6. API Reference (Backend Endpoints)
+
+### `POST /api/invoices/process`
+Uploads and extracts report rows from an image or PDF.
+- **Content-Type:** `multipart/form-data`
+- **Fields:**
+  - `invoice`: Binary file (PDF, JPG, JPEG, PNG, max 10MB).
+  - `mode`: `"auto"` (default), `"fast_handwritten"`, or `"computer"`.
+- **Response `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "invoiceType": "handwritten" | "computer",
+    "rows": [
+      { "srNo": 1, "itemName": "BTONIC", "packSize": "200ML", "quantity": 142 }
+    ],
+    "timeSeconds": 2.1
+  }
+  ```
+
+### `POST /api/invoices/download`
+Generates a styled Excel `.xlsx` file from the client table.
+- **Content-Type:** `application/json`
+- **Body:**
+  ```json
+  {
+    "invoiceType": "handwritten" | "computer",
+    "rows": [ /* array of edited row objects */ ]
+  }
+  ```
+- **Response `200 OK`:** Binary `.xlsx` file stream (`Content-Disposition: attachment`).
+
+---
+
+## 7. Local vs Serverless (Vercel) Deployment Notes
+
+1. **Ephemeral File System:**
+   - In standard Node.js, uploads write to `sourceCode/uploads/`.
+   - On Vercel serverless functions, the file system is strictly read-only except `/tmp`.
+   - `services/tempStorage.js` automatically routes writes to `os.tmpdir()/report2excel` when `process.env.VERCEL` is detected.
+2. **Serverless Canvas / Native Binaries:**
+   - Serverless runtimes lack native GUI and canvas libraries.
+   - `server.js` polyfills DOMMatrix, ImageData, and Path2D globals required by `pdf-parse v2`.
+   - Sharp uses `@img/sharp-linux-x64` (listed in `optionalDependencies`) for Vercel's Amazon Linux runtime.
+3. **Frontend Dynamic Origin:**
+   - `public/script.js` uses `window.location.origin` dynamically so requests resolve correctly in both `http://localhost:5000` and live production URLs without CORS or mixed-content errors.
+
+---
+
+## 8. Directory Breakdown
 
 | File / Directory | Purpose |
 | :--- | :--- |
-| `server.js` | Express app initialization, static middleware, CORS, and port binding. |
+| `server.js` | Express app initialization, static middleware, CORS, canvas polyfills, and port binding. |
 | `routes/invoiceRoutes.js` | Route definitions for `/process` (upload) and `/download` (export). |
 | `controllers/invoiceController.js` | Request validation, mode routing, error handling, and file cleanup. |
-| `middleware/uploadMiddleware.js` | Multer upload configuration with file extension filters. |
-| `services/unifiedInvoiceService.js` | Vision AI caller, Sharp preprocessing, prompt router, and line parser. |
-| `services/pdfService.js` | Extracts embedded images from PDF pages without native canvas binaries. |
-| `services/excelService.js` | Generates branded `.xlsx` spreadsheets for both report types. |
-| `services/tempStorage.js` | Resolves temporary storage paths safely. |
+| `middleware/uploadMiddleware.js` | Multer upload configuration with file extension filters and size limits. |
+| `services/unifiedInvoiceService.js` | Vision AI caller, Sharp preprocessing, prompt router, OTPM handling, and line parser. |
+| `services/pdfService.js` | Extracts embedded images and raw text from PDF pages without native canvas binaries. |
+| `services/excelService.js` | Generates branded `.xlsx` spreadsheets with emerald header, formulas, and totals. |
+| `services/tempStorage.js` | Resolves temporary storage paths safely between local (`uploads/`) and Vercel (`/tmp`). |
 | `public/index.html` | UI markup, mode selector, drag-drop zone, and table preview container. |
 | `public/style.css` | Comprehensive design system, media queries, and keyframe animations. |
-| `public/script.js` | DOM handlers, timer interval, confetti canvas, and inline table editor. |
+| `public/script.js` | DOM handlers, timer interval, confetti canvas, dynamic origin API calls, and inline table editor. |
 | `uploads/` | Scratch directory for transient uploads (cleaned after each request). |

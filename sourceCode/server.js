@@ -9,7 +9,7 @@ const cors = require("cors");
 const path = require("path");
 const tempStorageDir = require("./services/tempStorage");
 
-const invoiceRoutes = require("./routes/invoiceRoutes");
+const reportRoutes = require("./routes/reportRoutes");
 
 const app = express();
 
@@ -59,12 +59,12 @@ app.use(
 
 
 /* =========================
-   INVOICE ROUTES
+   REPORT ROUTES
 ========================= */
 
 app.use(
-    "/api/invoices",
-    invoiceRoutes
+    "/api/reports",
+    reportRoutes
 );
 
 
@@ -81,7 +81,7 @@ app.get(
             success: true,
 
             message:
-                "Invoice server is running."
+                "Report server is running."
         });
     }
 );

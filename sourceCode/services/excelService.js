@@ -17,7 +17,7 @@ async function createExcelFile(rows) {
         new ExcelJS.Workbook();
 
     const worksheet =
-        workbook.addWorksheet("Invoice");
+        workbook.addWorksheet("Report");
 
 
     worksheet.columns = [
@@ -167,7 +167,7 @@ async function createExcelFile(rows) {
         }
     ];
 
-    const filePath = path.join(tempStorageDir, `invoice-${Date.now()}.xlsx`);
+    const filePath = path.join(tempStorageDir, `report-${Date.now()}.xlsx`);
     await workbook.xlsx.writeFile(filePath);
     return filePath;
 }
@@ -182,7 +182,7 @@ async function createExcelFile(rows) {
  */
 async function createHandwrittenExcelFile(rows) {
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Invoice");
+    const worksheet = workbook.addWorksheet("Report");
 
     worksheet.columns = [
         { header: "SR.NO", key: "srNo", width: 10 },
@@ -307,7 +307,7 @@ async function createHandwrittenExcelFile(rows) {
         }
     ];
 
-    const filePath = path.join(tempStorageDir, `handwritten-invoice-${Date.now()}.xlsx`);
+    const filePath = path.join(tempStorageDir, `handwritten-report-${Date.now()}.xlsx`);
     await workbook.xlsx.writeFile(filePath);
     return filePath;
 }
