@@ -1,4 +1,6 @@
-const API_URL = "http://localhost:5000";
+const API_URL = (typeof window !== "undefined" && window.location.origin && !window.location.origin.startsWith("file:")) 
+    ? window.location.origin 
+    : "http://localhost:5000";
 
 let invoiceRows = [];
 let invoiceType = "handwritten";
