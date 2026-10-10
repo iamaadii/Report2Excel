@@ -32,6 +32,20 @@
           >
             <img class="brand-logo" src="logo.png" alt="Vasu Healthcare" />
           </a>
+
+          <div class="topline-controls">
+            <button
+              type="button"
+              id="themeToggleBtn"
+              class="theme-toggle-btn"
+              aria-label="Toggle dark mode"
+              title="Toggle dark/light theme"
+            >
+              <span class="theme-icon light-icon" aria-hidden="true">☀️</span>
+              <span class="theme-icon dark-icon" aria-hidden="true">🌙</span>
+              <span id="themeLabel" class="theme-label">Dark</span>
+            </button>
+          </div>
         </div>
 
         <h1>Turn reports into <em>workable data.</em></h1>
@@ -59,26 +73,11 @@
       <!-- Unified Upload Section -->
       <section class="upload-options single-card-wrapper">
         <div id="uploadCard" class="upload-card unified-card">
-          <div class="card-topline">
-            <div class="card-icon unified-icon" aria-hidden="true">📄</div>
-          </div>
-
           <h2>Upload Report</h2>
-
-          <p class="card-description">
-            Upload any handwritten slip or computer-generated report (<strong>1 page max</strong>). The system automatically identifies the layout and extracts all rows.
-          </p>
 
           <div class="single-page-notice">
             <span class="notice-icon">ℹ️</span>
-            <span>Single-page PDF or single image (JPG, PNG) only</span>
-          </div>
-
-          <div class="supported">
-            <span>Single-Page PDF</span>
-            <span>JPG</span>
-            <span>JPEG</span>
-            <span>PNG</span>
+            <span>Single-page PDF or image (JPG, PNG) only</span>
           </div>
 
           <!-- Mode Selector -->
@@ -113,9 +112,18 @@
 
           <input type="file" id="reportFileInput" accept=".pdf,.jpg,.jpeg,.png" />
 
-          <!-- Selected file -->
-          <div class="selected-file">
-            <p id="reportFileName" class="file-name"></p>
+          <!-- Selected file with Thumbnail & Meta Chip -->
+          <div id="selectedFileContainer" class="selected-file hidden">
+            <div class="file-info-group">
+              <div id="fileThumbWrapper" class="file-thumb-wrapper">
+                <span id="fileThumbIcon" class="file-thumb-icon">📄</span>
+                <img id="fileThumbImg" class="file-thumb-img hidden" alt="File Preview" />
+              </div>
+              <div class="file-meta">
+                <p id="reportFileName" class="file-name"></p>
+                <span id="reportFileSize" class="file-size-chip"></span>
+              </div>
+            </div>
 
             <button
               type="button"
@@ -126,6 +134,9 @@
             </button>
           </div>
 
+          <!-- Status / Error / Success Feedback Banner -->
+          <div id="uploadStatus" class="status"></div>
+
           <button
             type="button"
             id="processUploadBtn"
@@ -134,8 +145,6 @@
           >
             Process Report
           </button>
-
-          <p id="uploadStatus" class="status"></p>
         </div>
       </section>
 
@@ -154,6 +163,15 @@
           </div>
 
           <div class="preview-actions">
+            <!-- Search / Filter input -->
+            <div class="search-box-wrapper">
+              <span class="search-icon">🔍</span>
+              <input type="text" id="tableSearchInput" placeholder="Filter items..." />
+            </div>
+
+            <button type="button" id="copyClipboardBtn" class="copy-btn" title="Copy to clipboard for Google Sheets/Excel">
+              📋 Copy Data
+            </button>
             <button type="button" id="addRowBtn" class="add-row-btn">
               ＋ Add Row
             </button>
@@ -168,6 +186,21 @@
             <thead id="tableHead"></thead>
             <tbody id="tableBody"></tbody>
           </table>
+        </div>
+
+        <!-- Table Statistics / Summary Bar -->
+        <div id="tableSummaryBar" class="table-summary-bar">
+          <div class="summary-item">
+            <span class="summary-label">Total Rows:</span>
+            <span id="summaryTotalRows" class="summary-value">0</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Total Quantity:</span>
+            <span id="summaryTotalQty" class="summary-value">0</span>
+          </div>
+          <div class="summary-hint">
+            <span>💡 Tip: Click any cell directly to edit its content</span>
+          </div>
         </div>
       </section>
     </div>

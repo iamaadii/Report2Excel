@@ -1,3 +1,11 @@
+// Prevent automatic scroll jump on page reload (Ctrl+R / F5)
+if (typeof history !== "undefined" && "scrollRestoration" in history) {
+    history.scrollRestoration = "manual";
+}
+if (typeof window !== "undefined") {
+    window.scrollTo(0, 0);
+}
+
 const API_URL = (typeof window !== "undefined" && window.location.origin && !window.location.origin.startsWith("file:")) 
     ? window.location.origin 
     : "http://localhost:5000";
@@ -12,7 +20,11 @@ let selectedMode = "auto";
 
 const reportFileInput = document.getElementById("reportFileInput");
 const reportChooseBtn = document.getElementById("reportChooseBtn");
+const selectedFileContainer = document.getElementById("selectedFileContainer");
+const fileThumbIcon = document.getElementById("fileThumbIcon");
+const fileThumbImg = document.getElementById("fileThumbImg");
 const reportFileName = document.getElementById("reportFileName");
+const reportFileSize = document.getElementById("reportFileSize");
 const reportRemoveBtn = document.getElementById("reportRemoveBtn");
 const processUploadBtn = document.getElementById("processUploadBtn");
 const uploadStatus = document.getElementById("uploadStatus");
@@ -25,12 +37,52 @@ const tableHead = document.getElementById("tableHead");
 const tableBody = document.getElementById("tableBody");
 const downloadBtn = document.getElementById("downloadBtn");
 const addRowBtn = document.getElementById("addRowBtn");
+const copyClipboardBtn = document.getElementById("copyClipboardBtn");
+const tableSearchInput = document.getElementById("tableSearchInput");
+const summaryTotalRows = document.getElementById("summaryTotalRows");
+const summaryTotalQty = document.getElementById("summaryTotalQty");
+
+const themeToggleBtn = document.getElementById("themeToggleBtn");
+const themeLabel = document.getElementById("themeLabel");
 
 const modePills = document.querySelectorAll(".mode-pill");
 
 const workflowSteps = Array.from(
     document.querySelectorAll(".workflow-step[data-step]")
 );
+
+/* =========================
+   THEME SWITCHER (DARK / LIGHT)
+========================= */
+
+function initTheme() {
+    const savedTheme = localStorage.getItem("report2excel_theme");
+    const systemPrefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const initialTheme = savedTheme || (systemPrefersDark ? "dark" : "light");
+
+    applyTheme(initialTheme);
+}
+
+function applyTheme(theme) {
+    if (theme === "dark") {
+        document.documentElement.setAttribute("data-theme", "dark");
+        if (themeLabel) themeLabel.textContent = "Light";
+        localStorage.setItem("report2excel_theme", "dark");
+    } else {
+        document.documentElement.removeAttribute("data-theme");
+        if (themeLabel) themeLabel.textContent = "Dark";
+        localStorage.setItem("report2excel_theme", "light");
+    }
+}
+
+if (themeToggleBtn) {
+    themeToggleBtn.addEventListener("click", () => {
+        const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+        applyTheme(isDark ? "light" : "dark");
+    });
+}
+
+initTheme();
 
 /* =========================
    MODE SELECTION
@@ -76,6 +128,15 @@ function setWorkflowStep(stepName) {
    FILE SELECTION & DRAG-AND-DROP
 ========================= */
 
+let currentThumbUrl = null;
+
+function formatFileSize(bytes) {
+    if (!bytes && bytes !== 0) return "";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
 function handleFileChosen(file) {
     if (!file) return;
 
@@ -94,6 +155,37 @@ function handleFileChosen(file) {
     }
 
     reportFileName.textContent = file.name;
+    if (reportFileSize) {
+        reportFileSize.textContent = formatFileSize(file.size);
+    }
+
+    // Set thumbnail preview
+    if (currentThumbUrl) {
+        URL.revokeObjectURL(currentThumbUrl);
+        currentThumbUrl = null;
+    }
+
+    if (["jpg", "jpeg", "png"].includes(ext)) {
+        currentThumbUrl = URL.createObjectURL(file);
+        if (fileThumbImg) {
+            fileThumbImg.src = currentThumbUrl;
+            fileThumbImg.classList.remove("hidden");
+        }
+        if (fileThumbIcon) fileThumbIcon.classList.add("hidden");
+    } else {
+        if (fileThumbImg) {
+            fileThumbImg.src = "";
+            fileThumbImg.classList.add("hidden");
+        }
+        if (fileThumbIcon) {
+            fileThumbIcon.textContent = "📑";
+            fileThumbIcon.classList.remove("hidden");
+        }
+    }
+
+    if (selectedFileContainer) {
+        selectedFileContainer.classList.remove("hidden");
+    }
     reportRemoveBtn.classList.remove("hidden");
     processUploadBtn.disabled = false;
     uploadStatus.className = "status";
@@ -105,6 +197,24 @@ function handleFileChosen(file) {
 function clearUploadSection() {
     reportFileInput.value = "";
     reportFileName.textContent = "";
+    if (reportFileSize) reportFileSize.textContent = "";
+
+    if (currentThumbUrl) {
+        URL.revokeObjectURL(currentThumbUrl);
+        currentThumbUrl = null;
+    }
+    if (fileThumbImg) {
+        fileThumbImg.src = "";
+        fileThumbImg.classList.add("hidden");
+    }
+    if (fileThumbIcon) {
+        fileThumbIcon.textContent = "📄";
+        fileThumbIcon.classList.remove("hidden");
+    }
+    if (selectedFileContainer) {
+        selectedFileContainer.classList.add("hidden");
+    }
+
     reportRemoveBtn.classList.add("hidden");
     processUploadBtn.disabled = true;
     uploadStatus.className = "status";
@@ -118,6 +228,8 @@ function clearPreviewSection() {
     tableBody.innerHTML = "";
     detectedBadge.textContent = "";
     detectedBadge.className = "detected-badge";
+    if (tableSearchInput) tableSearchInput.value = "";
+    updateTableSummary();
     setWorkflowStep("upload");
 }
 
@@ -317,8 +429,13 @@ processUploadBtn.addEventListener("click", async () => {
         previewSection.classList.remove("hidden");
         setWorkflowStep("review");
 
-        uploadStatus.className = "status success";
-        uploadStatus.textContent = `⚡ Extracted ${reportRows.length} rows successfully${durationText}!`;
+        uploadStatus.className = "status";
+        uploadStatus.innerHTML = `
+            <div class="success-msg-box">
+                <span class="success-title">✅ Extracted ${reportRows.length} rows successfully${durationText}!</span>
+                <span class="success-tip">💡 Verified layout: <strong>${reportType === "handwritten" ? "Handwritten Slip (4 columns)" : "Computer Report (12 columns)"}</strong>. Review or edit below before downloading.</span>
+            </div>
+        `;
 
         // Launch celebratory confetti effect!
         launchCelebration();
@@ -329,13 +446,15 @@ processUploadBtn.addEventListener("click", async () => {
 
     } catch (error) {
         console.error("Processing error:", error);
-        uploadStatus.className = "status error";
+        uploadStatus.className = "status";
         
         let tipHtml = "";
         if (error.tip) {
-            tipHtml = `<span class="status-tip">💡 Tip: ${error.tip}</span>`;
+            tipHtml = `<span class="error-tip">💡 Tip: ${error.tip}</span>`;
         } else if (error.message && (error.message.includes("quota") || error.message.includes("limit"))) {
-            tipHtml = `<span class="status-tip">💡 Tip: AI free limit was reached. You can try a smaller file, switch to Fast Handwritten mode, or retry shortly.</span>`;
+            tipHtml = `<span class="error-tip">💡 Tip: AI free limit was reached. You can try a smaller file, switch to Fast Handwritten mode, or retry shortly.</span>`;
+        } else {
+            tipHtml = `<span class="error-tip">💡 Tip: Ensure the file is clear, right-side up, and contains a tabular handwritten or computer report.</span>`;
         }
 
         uploadStatus.innerHTML = `
@@ -344,6 +463,9 @@ processUploadBtn.addEventListener("click", async () => {
                 ${tipHtml}
             </div>
         `;
+
+        // Automatically bring the error directly into view on mobile or zoomed displays
+        uploadStatus.scrollIntoView({ behavior: "smooth", block: "nearest" });
     } finally {
         clearInterval(timerInterval);
         if (uploadCard) uploadCard.classList.remove("processing");
@@ -388,6 +510,117 @@ if (addRowBtn) {
 }
 
 /* =========================
+   TABLE SUMMARY & STATISTICS
+========================= */
+
+function updateTableSummary() {
+    if (!summaryTotalRows || !summaryTotalQty) return;
+
+    summaryTotalRows.textContent = reportRows.length;
+
+    let totalQty = 0;
+    if (reportType === "handwritten") {
+        reportRows.forEach((r) => {
+            const num = parseFloat(String(r.quantity || "").replace(/[^0-9.-]/g, ""));
+            if (!isNaN(num)) totalQty += num;
+        });
+    } else {
+        reportRows.forEach((r) => {
+            // Check closingQty or receiptQty or issueQty if present
+            const q = r.closingQty || r.issueQty || r.receiptQty || r.openingQty;
+            const num = parseFloat(String(q || "").replace(/[^0-9.-]/g, ""));
+            if (!isNaN(num)) totalQty += num;
+        });
+    }
+
+    summaryTotalQty.textContent = Number.isInteger(totalQty) ? totalQty : totalQty.toFixed(2);
+}
+
+/* =========================
+   LIVE TABLE SEARCH & FILTER
+========================= */
+
+if (tableSearchInput) {
+    tableSearchInput.addEventListener("input", () => {
+        const query = tableSearchInput.value.toLowerCase().trim();
+        const trs = tableBody.querySelectorAll("tr");
+
+        trs.forEach((tr) => {
+            const text = tr.textContent.toLowerCase();
+            if (!query || text.includes(query)) {
+                tr.style.display = "";
+            } else {
+                tr.style.display = "none";
+            }
+        });
+    });
+}
+
+/* =========================
+   COPY TO CLIPBOARD (TSV)
+========================= */
+
+if (copyClipboardBtn) {
+    copyClipboardBtn.addEventListener("click", async () => {
+        if (!reportRows || reportRows.length === 0) return;
+
+        let headers = [];
+        let keys = [];
+
+        if (reportType === "handwritten") {
+            headers = ["SR.NO", "ITEM NAME", "PACK SIZE", "QUANTITY"];
+            keys = ["srNo", "itemName", "packSize", "quantity"];
+        } else {
+            headers = [
+                "ITEM DESCRIPTION", "PACK SIZE", "OPENING QTY", "OPENING VALUE",
+                "RECEIPT QTY", "RECEIPT VALUE", "ISSUE QTY", "ISSUE VALUE",
+                "CLOSING QTY", "CLOSING VALUE", "DUMP QTY", "M.EXP"
+            ];
+            keys = [
+                "itemDescription", "packSize", "openingQty", "openingValue",
+                "receiptQty", "receiptValue", "issueQty", "issueValue",
+                "closingQty", "closingValue", "dumpQty", "mExp"
+            ];
+        }
+
+        const lines = [];
+        lines.push(headers.join("\t"));
+
+        reportRows.forEach((row) => {
+            const rowVals = keys.map((k) => String(row[k] ?? "").replace(/[\t\r\n]/g, " "));
+            lines.push(rowVals.join("\t"));
+        });
+
+        const tsvData = lines.join("\n");
+
+        try {
+            await navigator.clipboard.writeText(tsvData);
+            const originalText = copyClipboardBtn.textContent;
+            copyClipboardBtn.textContent = "✅ Copied!";
+            copyClipboardBtn.classList.add("copied");
+            setTimeout(() => {
+                copyClipboardBtn.textContent = originalText;
+                copyClipboardBtn.classList.remove("copied");
+            }, 2000);
+        } catch (err) {
+            console.error("Clipboard copy error:", err);
+            // Fallback copy using textarea
+            const ta = document.createElement("textarea");
+            ta.value = tsvData;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            document.body.removeChild(ta);
+            const originalText = copyClipboardBtn.textContent;
+            copyClipboardBtn.textContent = "✅ Copied!";
+            setTimeout(() => {
+                copyClipboardBtn.textContent = originalText;
+            }, 2000);
+        }
+    });
+}
+
+/* =========================
    RENDER HANDWRITTEN TABLE (4 COLUMNS)
 ========================= */
 
@@ -423,6 +656,7 @@ function renderHandwrittenTable(rows) {
 
             td.addEventListener("input", () => {
                 reportRows[rowIndex][field] = td.textContent.trim();
+                updateTableSummary();
             });
 
             tr.appendChild(td);
@@ -447,6 +681,11 @@ function renderHandwrittenTable(rows) {
 
         tableBody.appendChild(tr);
     });
+
+    updateTableSummary();
+    if (tableSearchInput && tableSearchInput.value) {
+        tableSearchInput.dispatchEvent(new Event("input"));
+    }
 }
 
 /* =========================
@@ -507,6 +746,7 @@ function renderComputerTable(rows) {
 
             td.addEventListener("input", () => {
                 reportRows[rowIndex][field] = td.textContent.trim();
+                updateTableSummary();
             });
 
             tr.appendChild(td);
@@ -529,6 +769,11 @@ function renderComputerTable(rows) {
 
         tableBody.appendChild(tr);
     });
+
+    updateTableSummary();
+    if (tableSearchInput && tableSearchInput.value) {
+        tableSearchInput.dispatchEvent(new Event("input"));
+    }
 }
 
 /* =========================
