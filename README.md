@@ -12,9 +12,9 @@
 
 ## Overview
 
-Report2Excel is a web app that converts **report sheets (PDFs and images) into formatted Excel spreadsheets (`.xlsx`)**. It uses a Vision AI API to read the report, lets you fix any mistakes on screen, and exports a ready-to-use Excel file.
+Report2Excel is a web app that converts **report sheets (single-page PDFs and images) into formatted Excel spreadsheets (`.xlsx`)**. It uses a Vision AI API to read the report, verifies document validity, lets you review and edit rows inline, and exports a ready-to-use Excel file.
 
-> **Note:** This tool was built for a specific report layout used at Vasu. The Vasu name and logo belong to their owner and are shown here only to identify the report format it was built for. No company data is included in this repository.
+> **Note:** This tool was built for specific report layouts used at Vasu Healthcare. The Vasu name and logo belong to their owner and are shown here only to identify the report format it was built for. No company data is included in this repository.
 
 ## Screenshots
 
@@ -28,19 +28,25 @@ Report2Excel is a web app that converts **report sheets (PDFs and images) into f
 
 ## Features
 
-- **Fast processing:** images are resized and compressed with Sharp before upload, so extraction usually takes about 1.5 to 5 seconds.
-- **Three modes:**
-  - **Auto-Detect (default):** identifies the report layout by itself.
-  - **Fast Handwritten:** built for notebook pages and handwritten slips. It solves written sums (`96+36=142` becomes `142`), resolves ditto marks (`"`) and removes unit words like `pcs` and `box`.
-  - **Computer Report:** extracts a 12-column stock and sales report.
-- **Edit in the browser:** click any cell to fix it, add missing rows, or delete rows.
-- **Responsive design:** works on phones, tablets and desktops.
-- **Excel export:**
+- **Fast & Lean Vision Extraction:** Images are resized and compressed with Sharp before upload, so extraction takes about 1.5 to 4 seconds.
+- **Strict Document Verification:** Rejects non-report uploads (e.g. selfies, random photos, unrelated documents) with helpful guidance.
+- **Enforced Single-Page Rule:** Enforces 1 single document / 1 single page per upload to protect token quota and ensure high extraction accuracy.
+- **Three Processing Modes:**
+  - **Auto-Detect (default):** Identifies the report layout by itself.
+  - **Fast Handwritten:** Built for notebook pages and handwritten slips. It solves written sums (`96+36=142` becomes `142`), resolves ditto marks (`"`), and cleans unit labels.
+  - **Computer Report:** Extracts 12-column stock and inventory reports.
+- **Interactive Review & Edit:** Click any cell to fix details, add new rows, or delete unwanted rows.
+- **Live Search & Filter:** Instantly filter table items in real time as you type.
+- **Clipboard Export:** One-click "📋 Copy Data" (TSV) to paste directly into Google Sheets or Excel without downloading files.
+- **Summary Metrics Bar:** Dynamic real-time calculation of total rows and sum of quantities.
+- **Dark & Light Mode:** Seamless theme toggle with local storage persistence and branded logo adaptation.
+- **Responsive Design:** Optimized layout across all devices, from ultra-wide desktops down to 360px mobile screens.
+- **Excel Export:**
   - Dark emerald header with white bold text
   - Auto-fitted column widths
   - Number formatting (`#,##0`) for quantities
-  - Automatic `TOTAL` row
-  - Light borders on all cells, ready for printing
+  - Automatic `TOTAL` summary row
+  - Clean hairline borders, ready for printing
 
 ## Supported Report Formats
 
@@ -49,7 +55,7 @@ Report2Excel is a web app that converts **report sheets (PDFs and images) into f
 | **Typical source** | Notebook pages, handwritten slips | Printed or PDF stock sheets |
 | **Columns** | `SR.NO`, `ITEM NAME`, `PACK SIZE`, `QUANTITY` | `ITEM DESCRIPTION`, `PACK SIZE`, `OPENING QTY/VALUE`, `RECEIPT QTY/VALUE`, `ISSUE QTY/VALUE`, `CLOSING QTY/VALUE`, `DUMP QTY`, `M.EXP` |
 | **Math solver** | Yes | Not needed |
-| **Average speed** | ~1.5 to 2.5 s | ~3 to 5 s |
+| **Average speed** | ~1.5 to 2.5 s | ~2.5 to 4.5 s |
 | **Needs API key** | Yes | Yes |
 
 ---
@@ -57,10 +63,10 @@ Report2Excel is a web app that converts **report sheets (PDFs and images) into f
 ## Tech Stack
 
 - **Backend:** Node.js, Express
-- **AI:** Vision AI API (Groq / xAI Grok)
-- **Image and PDF handling:** Sharp, pdf-lib
+- **AI Engine:** Groq Cloud Vision AI (`qwen/qwen3.8-27b`) / xAI (`grok-2-vision-1212`)
+- **Image & PDF handling:** Sharp, pdf-lib, pdf-parse
 - **Excel generation:** ExcelJS
-- **Frontend:** HTML, CSS, JavaScript (no UI framework)
+- **Frontend:** Vanilla HTML5, CSS3, JavaScript (zero heavy frameworks)
 
 ---
 
@@ -79,7 +85,11 @@ npm install
 ### 3. Configure
 Create a `.env` file inside `sourceCode`:
 ```env
-GROK_API_KEY=your_api_key_here
+# Primary Vision API Key (Groq or xAI)
+GROK_API_KEY=gsk_your_groq_api_key_here
+
+# Optional: Multi-key fallback rotation (comma-separated)
+GROQ_API_KEYS=gsk_key1,gsk_key2
 ```
 Never commit this file. It is listed in `.gitignore`.
 
@@ -99,10 +109,10 @@ http://localhost:5000
 ## How to Use
 
 1. **Pick a mode:** Auto-Detect, Fast Handwritten, or Computer Report.
-2. **Upload** a PDF, JPG, JPEG or PNG.
+2. **Upload** a single-page PDF, JPG, JPEG, or PNG.
 3. Click **Process Report**.
-4. **Review** the table. Edit cells, add rows or delete rows as needed.
-5. Click **Download Excel** to save the `.xlsx` file.
+4. **Review & Filter** the extracted table. Edit cells inline or add/delete rows as needed.
+5. Click **Download Excel** or **Copy Data** to use your spreadsheet.
 
 ---
 
@@ -111,27 +121,32 @@ http://localhost:5000
 ```text
 Report2Excel/
 ├── README.md
-└── sourceCode/
-    ├── server.js                    # Express server entry point
-    ├── controllers/
-    │   └── reportController.js      # Request validation, mode handling, Excel export
-    ├── middleware/
-    │   └── uploadMiddleware.js      # File upload checks (type and size)
-    ├── public/                      # Frontend
-    │   ├── index.html
-    │   ├── style.css
-    │   ├── script.js
-    │   ├── favicon.svg
-    │   └── logo.png
-    ├── routes/
-    │   └── reportRoutes.js          # API routes (/process, /download)
-    ├── services/
-    │   ├── reportExtractService.js  # Vision AI extraction and layout detection
-    │   ├── pdfService.js            # PDF page to image conversion
-    │   ├── excelService.js          # Styled .xlsx generator
-    │   └── tempStorage.js           # Temporary file paths
-    ├── uploads/                     # Temporary uploads (auto-cleaned)
-    └── package.json
+├── docs/
+│   ├── ARCHITECTURE.md
+│   ├── logo-card.png
+│   └── screenshots/
+├── sourceCode/
+│   ├── server.js                        # Express server entry point
+│   ├── controllers/
+│   │   └── reportController.js          # Request handling, page validation, export
+│   ├── middleware/
+│   │   └── uploadMiddleware.js          # Multer upload configuration & filters
+│   ├── public/                          # Frontend assets
+│   │   ├── index.html                   # Responsive UI & theme toggle
+│   │   ├── style.css                    # Glassmorphism, animations & dark mode
+│   │   ├── script.js                    # Dynamic DOM, live search, clipboard & export
+│   │   ├── favicon.svg
+│   │   └── logo.png
+│   ├── routes/
+│   │   └── reportRoutes.js              # API routes (/process, /download)
+│   ├── services/
+│   │   ├── reportExtractionService.js   # Vision AI prompt routing, multi-key rotation
+│   │   ├── pdfService.js                # PDF page extraction & count validation
+│   │   ├── excelService.js              # Branded .xlsx generator
+│   │   └── tempStorage.js               # Temporary directory resolver
+│   ├── uploads/                         # Temporary upload staging (auto-cleaned)
+│   └── package.json
+└── vercel.json
 ```
 
 ---
