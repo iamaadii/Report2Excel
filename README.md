@@ -1,7 +1,5 @@
 <p align="center">
-  <a href="#overview">
-    <img src="sourceCode/public/logo.png" alt="Vasu Healthcare Logo" width="220" style="background-color: #ffffff; padding: 14px 24px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 14px rgba(0,0,0,0.08); max-width: 100%;">
-  </a>
+  <img src="docs/logo-card.png" alt="Vasu" width="220">
 </p>
 
 <h1 align="center">Report2Excel</h1>
